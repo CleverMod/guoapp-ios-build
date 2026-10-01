@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -39,11 +41,12 @@ jobs:
           cache: true
       - name: Check changed Dart formatting
         run: |
+          source_commit="$(git log -1 --format=%H -- lib test)"
           while IFS= read -r -d '' source; do
             if [[ -f "$source" ]]; then
               dart format "$source"
             fi
-          done < <(git diff-tree --no-commit-id --name-only -r -z HEAD -- '*.dart')
+          done < <(git diff-tree --root --no-commit-id --name-only -r -z "$source_commit" -- '*.dart')
           git diff --exit-code
       - name: Check iOS build tools
         run: |
