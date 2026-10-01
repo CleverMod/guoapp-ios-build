@@ -149,7 +149,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.statusRequests, ['hongguo']);
       expect(find.byKey(const ValueKey('source-hongguo')), findsOneWidget);
-      for (final source in SourceSite.knownValues.skip(1)) {
+      for (final source in SourceSite.allValues.skip(1)) {
         expect(find.byKey(ValueKey('source-${source.id}')), findsNothing);
       }
       await tester.pumpWidget(const SizedBox.shrink());
@@ -297,8 +297,9 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: const TextScaler.linear(1.5)),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.5)),
             child: child!,
           ),
           home: SourcesScreen(repository: repository, store: store),

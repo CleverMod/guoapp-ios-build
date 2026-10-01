@@ -192,10 +192,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('过期分类结果'), findsNothing);
-      expect(
-        repository.categoryRequests,
-        contains('huangguoai|ai-duanju|1'),
-      );
+      expect(repository.categoryRequests, contains('huangguoai|ai-duanju|1'));
       expect(find.text('huangguoai · ai-duanju'), findsOneWidget);
       expect(find.text('cloudfront · old-short'), findsNothing);
       expect(

@@ -114,7 +114,7 @@ void main() {
       }
     }
     if (!allSourcesEnabled) {
-      for (final source in SourceSite.knownValues.skip(1)) {
+      for (final source in SourceSite.allValues.skip(1)) {
         expect(find.widgetWithText(ChoiceChip, source.name), findsNothing);
       }
       return;

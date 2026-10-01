@@ -56,8 +56,7 @@ class SourceGroup {
   final List<SourceSite> sources;
 
   static List<SourceGroup> fromSources(Iterable<SourceSite> sources) => [
-    for (final source in sources)
-      SourceGroup(source.id, source.name, [source]),
+    for (final source in sources) SourceGroup(source.id, source.name, [source]),
   ];
 }
 
