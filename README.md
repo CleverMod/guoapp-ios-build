@@ -10,7 +10,7 @@ Flutter 多端独立短剧 / 影视应用，原名「短剧库 APP」。站源�
 
 旧用户权限中保存的 `yeguo-worker` 在读取时忽略，避免因入口删除而锁定整个用户配置；不会自动授予野果或其他站源权限。原野果专线的收藏、观看记录仍保留在本地数据及备份中，但不再显示，也未自动迁移到野果。
 
-> 说明：按项目约定暂停测试与回归；本次站源去重及黄果入口拆分仅完成源码引用检查、格式整理和收尾同步，未做源站联网验证、自动化测试或真机验收。当前快照未重新构建 Android / Windows / iOS，保持未验收状态。历史版本的检查记录不能作为本次修改的验收结论。
+> 说明：按项目约定暂停测试与回归；本次站源密码移除、野果专线去重及黄果入口拆分已完成源码引用检查、Dart / Go 格式整理和收尾同步，全站源 iOS 未签名 IPA 已通过 macOS Actions 构建及包结构检查。未做源站联网验证、自动化测试或真机验收；Android / Windows 未重新构建，保持开发快照状态。历史版本的检查记录不能作为本次修改的验收结论。
 
 | 编译方式 | 应用名称 | 可用站源 |
 | --- | --- | --- |
@@ -74,7 +74,7 @@ Flutter 多端独立短剧 / 影视应用，原名「短剧库 APP」。站源�
 | Android 8.0+ | 三架构（arm64-v8a / armeabi-v7a / x86_64）APK；同一签名可覆盖升级 |
 | Windows 10/11 x64 | 完整 ZIP 解压后运行 `hongguojian.exe` / `zhenguojian.exe`，保留所有 DLL 与 `data`；局域网原生发现依赖 Windows 10 1903+ |
 | Android TV | 与手机共用源码，自动识别电视模式并保持横屏；待电视 / 盒子实机验收 |
-| iOS 15.1+ | `0.2.69+76` 删除野果专线并拆分黄果首页入口的全站源 arm64 未签名 IPA 待 Actions 构建；需要用户自行签名，待覆盖升级、播放与下载真机验收 |
+| iOS 15.1+ | `0.2.69+76` 全站源 arm64 未签名 IPA 已通过 Actions 构建，移除站源密码锁，删除野果专线并拆分黄果首页入口；Dart 格式、Go 核心、FFI 入口及 IPA 包结构检查通过，需要用户自行签名，待真机覆盖升级、播放与下载验收 |
 
 `INSTALL_FAILED_NO_MATCHING_ABIS` 表示 APK 与设备架构不匹配，请更换对应架构安装包。
 
@@ -130,6 +130,8 @@ python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 用户自行签名安装时，在 macOS 上运行 `python3 scripts/build_ios.py --all-sources`，输出全站源版 `dist/ios/zhenguojian-版本-ios-unsigned.ipa`，无需向构建机提供签名证书。打包时保留 `Payload/Runner.app` 层级，并检查 IPA 中的应用可执行文件与 `Info.plist`。也可在本项目 GitHub 仓库的 Actions 中手动运行 `Build unsigned iOS IPA`（`.github/workflows/build-ios.yml`），完成后下载 `zhenguojian-ios-unsigned` 产物。该任务仅构建未签名 IPA 并上传构建产物，不发布 Release。
 
 2026-10-01：[全站源 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/36868405458)，产物 `zhenguojian-0.2.66+73-ios-unsigned.ipa`，30,407,302 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。IPA ZIP 完整性、`Payload/Runner.app` 层级、arm64 架构、版本与校验和检查通过；SHA-256 为 `a1c3b4f49fab398d89486499f606bcff86a2144761a95144b18f4cd7320255e6`。构建时补齐缺失的 7 个 Flutter 依赖并保存锁文件，未升级其他已锁定依赖；未做真机验收。
+
+2026-10-01：[移除站源密码锁后的最新版 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/36874193742)，构建源码 `7d5c908`，产物 `zhenguojian-0.2.69+76-ios-unsigned.ipa`，30,385,680 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。站源密码设置、解锁、重新锁定、关闭密码及连续点击入口均已删除，旧锁配置自动忽略；合并用户已要求的野果专线去重和黄果三入口拆分，共 11 个独立站源。依赖锁文件校验、修改文件的 Dart 格式检查、iOS 编译、FFI 入口、IPA ZIP 完整性、包层级、版本及 arm64 架构检查通过；SHA-256 为 `3286f9ce06375a76cd20fae70b1ab9315167449ef62df2d1aa6d38d0da5b0a3b`。未运行自动化测试或真机验收。
 
 产物在 `dist/android`、`dist/windows`、`dist/ios`，红果版以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。
 
