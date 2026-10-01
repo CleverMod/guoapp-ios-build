@@ -2,6 +2,11 @@ name: Build unsigned iOS IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh_lockfile:
+        description: Regenerate and export the Flutter dependency lockfile
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +42,17 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
           pod --version
+      - name: Refresh dependency lockfile
+        if: inputs.refresh_lockfile
+        run: flutter pub get
+      - name: Upload dependency lockfile
+        if: inputs.refresh_lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-lockfile
+          path: pubspec.lock
+          if-no-files-found: error
+          retention-days: 1
       - name: Build all-source unsigned IPA
         run: python3 scripts/build_ios.py --all-sources
       - name: Upload IPA and checksums
