@@ -4,9 +4,11 @@
 
 Flutter 多端独立短剧 / 影视应用，原名「短剧库 APP」。站源请求、解析、下载和播放均在设备上完成，不依赖自建服务。当前源码版本：**0.2.66+73（开发快照，未验收）**。
 
+公开源码仓库：[youniube/guoapp-ios-build](https://github.com/youniube/guoapp-ios-build)，默认分支为 `ios-build`。未签名 iOS 构建从 Actions 的 `Build unsigned iOS IPA` 手动触发；普通构建保持依赖锁文件校验，只有维护锁文件时才勾选 `refresh_lockfile`。
+
 已将用户提供的 `worker.js.js` 中的野果短剧接口移植为设备端原生站源 **野果专线**（`yeguo-worker`）。使用 `www.yeguodj.com/api.php` 的 JSON POST 接口和 AES-CBC 响应解密，接入 13 个分类、分页目录与搜索、剧集详情、分集播放及现有下载链路。原野果站源保留，两者分别保存剧集与目录缓存，无需部署 Cloudflare Worker。本轮将全站源版改为默认显示全部 12 个站源，无需启用或解锁站源密码锁；从旧版升级时，未启用密码锁的用户也会显示全部站源。
 
-> 说明：按项目约定暂停测试与回归，本轮仅进行源码格式整理和源码同步一致性检查；新增接口未做源站联网验证、自动化执行、平台构建或真机验收，保持未验收状态。历史版本的检查记录不能作为新增功能的验收结论。
+> 说明：按项目约定暂停测试与回归；按用户本轮要求，已通过 macOS Actions 完成全站源 iOS 未签名 IPA 构建，并检查 IPA 结构、arm64 架构、版本和 SHA-256。新增接口尚未做源站联网验证、自动化测试或真机验收，当前快照未重新构建 Android / Windows，保持未验收状态。历史版本的检查记录不能作为新增功能的验收结论。
 
 | 编译方式 | 应用名称 | 可用站源 |
 | --- | --- | --- |
@@ -71,7 +73,7 @@ Flutter 多端独立短剧 / 影视应用，原名「短剧库 APP」。站源�
 | Android 8.0+ | 三架构（arm64-v8a / armeabi-v7a / x86_64）APK；同一签名可覆盖升级 |
 | Windows 10/11 x64 | 完整 ZIP 解压后运行 `hongguojian.exe` / `zhenguojian.exe`，保留所有 DLL 与 `data`；局域网原生发现依赖 Windows 10 1903+ |
 | Android TV | 与手机共用源码，自动识别电视模式并保持横屏；待电视 / 盒子实机验收 |
-| iOS 15.1+ | 已加入工程、Go 核心链接、媒体依赖、文件管理与构建脚本；iOS 播放页禁用 media_kit_video 硬件纹理加速以规避 libmpv 渲染崩溃；待 Xcode 构建与真机验收，无已签名 IPA |
+| iOS 15.1+ | `0.2.66+73` 全站源 arm64 未签名 IPA 已通过 macOS Actions / Xcode 构建；Go 核心、FFI 入口和 IPA 包结构检查通过；需要用户自行签名，待真机安装、播放与下载验收 |
 
 `INSTALL_FAILED_NO_MATCHING_ABIS` 表示 APK 与设备架构不匹配，请更换对应架构安装包。
 
@@ -124,7 +126,9 @@ python3 scripts/build_ios.py --core-only [--simulator]
 python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 ~~~
 
-用户自行签名安装时，在 macOS 上运行 `python3 scripts/build_ios.py --all-sources`，输出全站源版 `dist/ios/zhenguojian-版本-ios-unsigned.ipa`，无需向构建机提供签名证书。打包时保留 `Payload/Runner.app` 层级，并检查 IPA 中的应用可执行文件与 `Info.plist`。也可将源码放入自己的 GitHub 仓库，在 Actions 中手动运行 `Build unsigned iOS IPA`（`.github/workflows/build-ios.yml`），完成后下载 `zhenguojian-ios-unsigned` 产物。该任务仅构建未签名 IPA 并上传构建产物，不发布 Release。本轮本地构建在 Windows 平台检查处退出，尚未生成或验收 IPA。
+用户自行签名安装时，在 macOS 上运行 `python3 scripts/build_ios.py --all-sources`，输出全站源版 `dist/ios/zhenguojian-版本-ios-unsigned.ipa`，无需向构建机提供签名证书。打包时保留 `Payload/Runner.app` 层级，并检查 IPA 中的应用可执行文件与 `Info.plist`。也可在本项目 GitHub 仓库的 Actions 中手动运行 `Build unsigned iOS IPA`（`.github/workflows/build-ios.yml`），完成后下载 `zhenguojian-ios-unsigned` 产物。该任务仅构建未签名 IPA 并上传构建产物，不发布 Release。
+
+2026-10-01：[全站源 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/36868405458)，产物 `zhenguojian-0.2.66+73-ios-unsigned.ipa`，30,407,302 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。IPA ZIP 完整性、`Payload/Runner.app` 层级、arm64 架构、版本与校验和检查通过；SHA-256 为 `a1c3b4f49fab398d89486499f606bcff86a2144761a95144b18f4cd7320255e6`。构建时补齐缺失的 7 个 Flutter 依赖并保存锁文件，未升级其他已锁定依赖；未做真机验收。
 
 产物在 `dist/android`、`dist/windows`、`dist/ios`，红果版以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。
 
