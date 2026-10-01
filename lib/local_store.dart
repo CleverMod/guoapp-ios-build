@@ -44,11 +44,6 @@ class LocalStore extends ChangeNotifier {
   String? _configurationError;
   int _epoch = 0;
   int _failures = 0;
-  bool _sourcesUnlocked = false;
-  bool _gateEnabled = false;
-  bool _gateOff = false;
-  String _gateSalt = '';
-  String _gateHash = '';
   DateTime _retryAfter = DateTime(2000);
 
   void _initialize() {
@@ -71,7 +66,6 @@ class LocalStore extends ChangeNotifier {
       }
       _configurationError = null;
       _locked = forceLogin && profile.protected;
-      _loadSourceGate();
       _loadLibrary();
     } catch (_) {
       _block('本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。');
@@ -99,7 +93,6 @@ class LocalStore extends ChangeNotifier {
   void _block(String message) {
     _configurationError = message;
     _locked = true;
-    _sourcesUnlocked = false;
     _profiles = [
       const LocalProfile(id: 'default', name: '配置待恢复', download: false),
     ];
@@ -133,118 +126,9 @@ class LocalStore extends ChangeNotifier {
 
   bool get canDownload => !locked && (profile.admin || profile.download);
   bool allowsSource(String source) =>
-      !locked &&
-      SourceSite.isAvailable(source) &&
-      profile.allows(source) &&
-      (_gateOff || _sourcesUnlocked || SourceSite.isPrimary(source));
-  List<SourceSite> get sources => SourceSite.visibleValues(
-    unlocked: _gateOff || _sourcesUnlocked,
-  ).where((site) => allowsSource(site.id)).toList();
-
-  /// 默认隐藏的站源是否已解锁。解锁状态只在本次运行内有效，重启后恢复隐藏。
-  bool get sourcesUnlocked => _gateOff || _sourcesUnlocked;
-
-  /// 是否已启用站源密码锁。
-  bool get sourceGateEnabled => _gateEnabled;
-
-  bool get sourceGateConfigured => _gateSalt.isNotEmpty && _gateHash.isNotEmpty;
-
-  /// 当前是否处于「不使用密码、显示全部站源」状态。
-  bool get sourceGateOff => _gateOff;
-
-  void _loadSourceGate() {
-    final enabled = _bool('sourceGateEnabled') ?? false;
-    final salt = _string('sourceGateSalt') ?? '';
-    final hash = _string('sourceGateHash') ?? '';
-    final valid =
-        enabled &&
-        RegExp(r'^[a-f0-9]{32}$').hasMatch(salt) &&
-        RegExp(r'^[a-f0-9]{64}$').hasMatch(hash);
-    _gateEnabled = valid;
-    _gateOff = !enabled;
-    _gateSalt = valid ? salt : '';
-    _gateHash = valid ? hash : '';
-    _sourcesUnlocked = false;
-  }
-
-  Future<void> _checkSourcePin(String pin) async {
-    if (DateTime.now().isBefore(_retryAfter)) {
-      throw StateError('密码输入过于频繁，请稍后再试');
-    }
-    final actual = await _pinHasher(pin, _gateSalt);
-    var difference = actual.length ^ _gateHash.length;
-    for (var i = 0; i < actual.length && i < _gateHash.length; i++) {
-      difference |= actual.codeUnitAt(i) ^ _gateHash.codeUnitAt(i);
-    }
-    if (difference != 0) {
-      _failures++;
-      if (_failures >= 3) {
-        _retryAfter = DateTime.now().add(
-          Duration(seconds: (_failures * 2).clamp(0, 30)),
-        );
-      }
-      throw StateError('密码不正确');
-    }
-    _failures = 0;
-  }
-
-  /// 校验密码并解锁默认隐藏的站源（仅本次运行有效）。
-  Future<void> unlockSources(String pin) => _queue(() async {
-    if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
-    if (!_gateEnabled) throw StateError('尚未启用站源密码锁');
-    await _checkSourcePin(pin);
-    if (!_sourcesUnlocked) {
-      _sourcesUnlocked = true;
-      _notify();
-    }
-  });
-
-  /// 重新隐藏默认隐藏的站源，无需重启。
-  void lockSources() {
-    if (!_gateEnabled || !_sourcesUnlocked) return;
-    _sourcesUnlocked = false;
-    _notify();
-  }
-
-  /// 设置或更换密码锁，并立即解锁。
-  Future<void> enableSourceGate(String pin) => _queue(() async {
-    _requireAdmin();
-    final value = pin.trim();
-    if (!RegExp(r'^\d{3,12}$').hasMatch(value)) {
-      throw StateError('密码需要 3 至 12 位数字');
-    }
-    final salt = randomProfileToken();
-    final hash = await _pinHasher(value, salt);
-    await _commit({
-      'sourceGateEnabled': true,
-      'sourceGateOff': false,
-      'sourceGateSalt': salt,
-      'sourceGateHash': hash,
-    });
-    _gateEnabled = true;
-    _gateOff = false;
-    _gateSalt = salt;
-    _gateHash = hash;
-    _sourcesUnlocked = true;
-    _notify();
-  });
-
-  /// 关闭密码功能，恢复全部站源可见。
-  Future<void> disableSourceGate() => _queue(() async {
-    _requireAdmin();
-    await _commit({
-      'sourceGateEnabled': false,
-      'sourceGateOff': true,
-      'sourceGateSalt': '',
-      'sourceGateHash': '',
-    });
-    _gateEnabled = false;
-    _gateOff = true;
-    _gateSalt = '';
-    _gateHash = '';
-    _sourcesUnlocked = false;
-    _notify();
-  });
+      !locked && SourceSite.isAvailable(source) && profile.allows(source);
+  List<SourceSite> get sources =>
+      SourceSite.values.where((site) => allowsSource(site.id)).toList();
 
   void _loadLibrary() {
     _lanDocumentCache = null;
@@ -1158,7 +1042,6 @@ class LocalStore extends ChangeNotifier {
     _current = profiles.firstWhere((profile) => profile.admin).id;
     _configurationError = null;
     _locked = forceLogin && profile.protected;
-    _loadSourceGate();
     _loadLibrary();
     _epoch++;
     _notify();
