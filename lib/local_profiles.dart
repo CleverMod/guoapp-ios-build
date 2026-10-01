@@ -40,7 +40,11 @@ class LocalProfile {
     final id = value['id'] as String;
     final name = (value['name'] as String).trim();
     final admin = value['admin'] == true;
-    final sources = (value['sources'] as List).cast<String>().toSet().toList();
+    final sources = (value['sources'] as List)
+        .cast<String>()
+        .where((id) => id != 'yeguo-worker')
+        .toSet()
+        .toList();
     final salt = value['salt'] as String? ?? '';
     final hash = value['pinHash'] as String? ?? '';
     if (!RegExp(r'^[a-zA-Z0-9_-]{1,64}$').hasMatch(id) ||

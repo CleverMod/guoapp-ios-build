@@ -11,32 +11,17 @@ class SourceSite {
   bool get pagedSearch =>
       id == 'huangju' ||
       id == 'yeguo' ||
-      id == 'yeguo-worker' ||
       id == 'dsd' ||
       id == 'sorani' ||
       id == 'guipian' ||
       id == 'hanxiaoquan';
   bool get searchSuggestions => id == 'hongguo';
-  String get groupId => switch (id) {
-    'huangguo-video' || 'huangguoai' || 'cloudfront' => 'huangguo',
-    _ => id,
-  };
-  String get groupName => groupId == 'huangguo' ? '黄果' : name;
-  String get entryName => switch (id) {
-    'huangguo-video' => '视频',
-    'huangguoai' => 'AI',
-    'cloudfront' => '旧版',
-    _ => name,
-  };
+  String get groupId => id;
+  String get groupName => name;
 
   static const hongguo = SourceSite('hongguo', '红果', '短剧 · 漫剧 · AI 剧');
   static const dsd = SourceSite('dsd', '帝果', '分类视频 · 在线搜索');
   static const sorani = SourceSite('sorani', '青空', '番剧 · 剧场动画 · 特摄');
-  static const yeguoWorker = SourceSite(
-    'yeguo-worker',
-    '野果专线',
-    '分类短剧 · 在线搜索',
-  );
   static const guipian = SourceSite('guipian', '鬼片', '鬼片 · 电视剧 · 动漫');
   static const hanxiaoquan = SourceSite(
     'hanxiaoquan',
@@ -49,7 +34,6 @@ class SourceSite {
     hanxiaoquan,
     guipian,
     sorani,
-    yeguoWorker,
     SourceSite('huangdou', '黄豆', '精选短剧'),
     SourceSite('huangju', '剧果', '热门 · 最新 · 分类短剧'),
     SourceSite('yeguo', '野果', '分类短剧 · 在线搜索'),
@@ -71,16 +55,10 @@ class SourceGroup {
   final String name;
   final List<SourceSite> sources;
 
-  static List<SourceGroup> fromSources(Iterable<SourceSite> sources) {
-    final groups = <String, List<SourceSite>>{};
-    for (final source in sources) {
-      (groups[source.groupId] ??= []).add(source);
-    }
-    return [
-      for (final group in groups.entries)
-        SourceGroup(group.key, group.value.first.groupName, group.value),
-    ];
-  }
+  static List<SourceGroup> fromSources(Iterable<SourceSite> sources) => [
+    for (final source in sources)
+      SourceGroup(source.id, source.name, [source]),
+  ];
 }
 
 class CatalogCategory {

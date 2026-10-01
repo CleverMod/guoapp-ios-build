@@ -61,8 +61,6 @@ func validNativeCategory(source, category string) bool {
 		return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
 	case sourceYeguo:
 		return validYeguoCategory(category)
-	case sourceYeguoWorker:
-		return validYeguoWorkerCategory(category)
 	case sourceDSD:
 		return webProviderNumericID.MatchString(category)
 	case sourceSorani:
@@ -88,8 +86,6 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		return append(all, nativeAICategories...), nil
 	case sourceHuangdou:
 		return all, nil
-	case sourceYeguoWorker:
-		return append(all, yeguoWorkerCategories...), nil
 	}
 	engine.mu.Lock()
 	cached := append([]nativeCategory{}, engine.categoryOptions[source]...)

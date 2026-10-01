@@ -39,6 +39,13 @@ jobs:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
+      - name: Resolve Flutter dependencies
+        run: |
+          if [[ "${{ inputs.refresh_lockfile }}" == "true" ]]; then
+            flutter pub get
+          else
+            flutter pub get --enforce-lockfile
+          fi
       - name: Check changed Dart formatting
         run: |
           source_commit="$(git log -1 --format=%H -- lib test)"
@@ -47,15 +54,12 @@ jobs:
               dart format "$source"
             fi
           done < <(git diff-tree --root --no-commit-id --name-only -r -z "$source_commit" -- '*.dart')
-          git diff --exit-code
+          git diff --exit-code -- '*.dart'
       - name: Check iOS build tools
         run: |
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
           pod --version
-      - name: Refresh dependency lockfile
-        if: inputs.refresh_lockfile
-        run: flutter pub get
       - name: Upload dependency lockfile
         if: inputs.refresh_lockfile
         uses: actions/upload-artifact@v4

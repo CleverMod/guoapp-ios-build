@@ -37,8 +37,6 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
 	case sourceYeguo:
 		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
-	case sourceYeguoWorker:
-		configured, fallback = d.cfg.YeguoWorkerURL, yeguoWorkerBaseURL
 	case sourceDSD:
 		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	case sourceSorani:
@@ -131,9 +129,6 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceYeguo {
 		return d.resolveYeguoMedia(ctx, task)
-	}
-	if chapter.Source == sourceYeguoWorker {
-		return d.resolveYeguoWorkerMedia(ctx, task)
 	}
 	if chapter.Source == sourceDSD {
 		return d.resolveDSDMedia(ctx, task)
