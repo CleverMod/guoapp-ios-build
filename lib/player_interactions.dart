@@ -9,13 +9,10 @@ import 'package:media_kit/media_kit.dart';
 import 'app_layout.dart';
 import 'widgets.dart';
 
-enum SwipeAction { none, brightness, episode }
+enum SwipeAction { none, seek, brightness, volume }
 
 class GestureHudState {
-  const GestureHudState({
-    this.type = SwipeAction.none,
-    this.value = 0.0,
-  });
+  const GestureHudState({this.type = SwipeAction.none, this.value = 0.0});
   final SwipeAction type;
   final double value; // 0.0 ~ 1.0
 }
@@ -29,16 +26,19 @@ class PlayerInteractions extends ChangeNotifier {
     required this.onFullscreen,
     required this.onEpisode,
     this.onSeek,
+    this.seekStepSeconds,
   }) {
     _playing = player.stream.playing.listen((playing) {
-      if (!playing) cancel();
+      if (!playing && !_scrubbing) cancel();
     });
-    AppDevice.getBrightness().then((val) {
-      if (!_disposed) {
-        _brightness = val;
-        notifyListeners();
-      }
-    }).catchError((_) {});
+    AppDevice.getBrightness()
+        .then((val) {
+          if (!_disposed) {
+            _brightness = val;
+            notifyListeners();
+          }
+        })
+        .catchError((_) {});
   }
 
   final Player player;
@@ -48,6 +48,7 @@ class PlayerInteractions extends ChangeNotifier {
   final VoidCallback onFullscreen;
   final String Function(int direction) onEpisode;
   final Future<void> Function(Duration)? onSeek;
+  final int Function()? seekStepSeconds;
   late final StreamSubscription<bool> _playing;
   Timer? _holdTimer;
   Timer? _hintTimer;
@@ -55,9 +56,6 @@ class PlayerInteractions extends ChangeNotifier {
   final Set<int> _pointers = {};
   int? _pointer;
   Offset? _origin;
-  Offset? _lastPosition;
-  Duration _started = Duration.zero;
-  double _swipeThreshold = 70;
   bool _swipeEnabled = false;
   bool _moved = false;
   bool _held = false;
@@ -72,13 +70,25 @@ class PlayerInteractions extends ChangeNotifier {
   GestureHudState _hudState = const GestureHudState();
   double _brightness = 0.5;
   double _initialBrightness = 0.5;
+  double _initialVolume = 100;
   double _viewWidth = 0.0;
   double _viewHeight = 0.0;
   Timer? _hudTimer;
+  Timer? _previewTimer;
+  Future<void> _scrubOperations = Future<void>.value();
+  int _scrubSequence = 0;
+  bool _scrubbing = false;
+  bool _scrubEnding = false;
+  bool _previewQueued = false;
+  bool _resumeAfterScrub = false;
+  Duration _scrubStart = Duration.zero;
+  Duration? _scrubTarget;
 
   GestureHudState get hudState => _hudState;
   double get brightness => _brightness;
   bool get isBrightnessActive => _hudState.type == SwipeAction.brightness;
+  bool get scrubbing => _scrubbing;
+  Duration? get scrubTarget => _scrubTarget;
 
   void setBrightnessDirect(double value) {
     if (_disposed) return;
@@ -90,6 +100,7 @@ class PlayerInteractions extends ChangeNotifier {
   void dismissBrightnessHud() {
     _scheduleDismissHud();
   }
+
   String get feedback => _feedback;
   bool get boosting => _boosting;
   bool get suppressTap => DateTime.now().isBefore(_ignoreTapUntil);
@@ -124,7 +135,7 @@ class PlayerInteractions extends ChangeNotifier {
   }
 
   void _beginHold({bool keyboard = false}) {
-    if (!available() || _holdTimer != null || _boosting) return;
+    if (!available() || _scrubbing || _holdTimer != null || _boosting) return;
     _keyboardHold = keyboard;
     _holdTimer = Timer(const Duration(milliseconds: 350), () {
       _holdTimer = null;
@@ -156,17 +167,44 @@ class PlayerInteractions extends ChangeNotifier {
     }
   }
 
-  void cancel() {
+  void cancel({bool resumeScrub = false}) {
     if (_disposed) return;
+    final resume = resumeScrub && _scrubbing && _resumeAfterScrub;
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    final ticket = ++_scrubSequence;
+    _scrubbing = resume;
+    _scrubEnding = resume;
+    _scrubTarget = null;
+    _previewQueued = false;
+    if (resume) {
+      _scrubOperations = _scrubOperations
+          .catchError((Object _) {})
+          .then((_) async {
+            if (_disposed || ticket != _scrubSequence) return;
+            try {
+              if (available()) await player.play();
+            } finally {
+              if (!_disposed && ticket == _scrubSequence) {
+                _scrubbing = _scrubEnding = false;
+                notifyListeners();
+              }
+            }
+          })
+          .catchError((Object _) {});
+    }
     if (_pointers.isNotEmpty) {
       _cancelUntilRelease = true;
       _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 600));
     }
     _pointer = null;
     _origin = null;
-    _lastPosition = null;
+    _swipeAction = SwipeAction.none;
+    _hudTimer?.cancel();
+    _hudState = const GestureHudState();
     _endHold(silent: true);
     hint('');
+    notifyListeners();
   }
 
   void pointerDown(
@@ -177,48 +215,71 @@ class PlayerInteractions extends ChangeNotifier {
   }) {
     _pointers.add(event.pointer);
     if (_pointers.length != 1 || _cancelUntilRelease) {
-      cancel();
+      cancel(resumeScrub: true);
       return;
     }
-    if (!available() || event.buttons != kPrimaryButton) return;
+    if (!available() || _scrubbing || event.buttons != kPrimaryButton) return;
     _pointer = event.pointer;
-    _origin = _lastPosition = event.localPosition;
-    _started = event.timeStamp;
+    _origin = event.localPosition;
     _swipeEnabled = swipeEnabled && event.kind == PointerDeviceKind.touch;
-    _swipeThreshold = math.max(30, math.min(80, height * .08));
     _viewWidth = width;
     _viewHeight = height;
     _moved = _held = false;
     _swipeAction = SwipeAction.none;
-
-    if (_swipeEnabled && width > 0) {
-      // 判定触摸落点：
-      // 左侧 35% 区域 -> 呼出并拉动红果风格亮度条
-      // 其余区域 -> 刷剧切集，绝对不调节音量
-      if (event.localPosition.dx < width * 0.35) {
-        _swipeAction = SwipeAction.brightness;
-        AppDevice.getBrightness().then((val) {
-          if (_pointer == event.pointer) {
-            _initialBrightness = _brightness = val;
-            _showHud(SwipeAction.brightness, _brightness);
+    _initialBrightness = _brightness;
+    _initialVolume = player.state.volume.clamp(0.0, 100.0);
+    if (_swipeEnabled && event.localPosition.dx < width * .35) {
+      unawaited(
+        AppDevice.getBrightness().then((value) {
+          if (!_disposed &&
+              _pointer == event.pointer &&
+              _swipeAction == SwipeAction.none) {
+            _initialBrightness = _brightness = value;
           }
-        });
-      } else {
-        _swipeAction = SwipeAction.episode;
-      }
+        }),
+      );
     }
     _beginHold();
   }
 
   void pointerMove(PointerMoveEvent event) {
     if (_pointer != event.pointer || _origin == null) return;
-    _lastPosition = event.localPosition;
     final diff = event.localPosition - _origin!;
     if (diff.distance > 12) {
       _moved = true;
       _endHold();
     }
-    if (!_swipeEnabled || !_moved || _viewHeight <= 0) return;
+    if (!_swipeEnabled ||
+        !_moved ||
+        _held ||
+        _viewHeight <= 0 ||
+        _viewWidth <= 0)
+      return;
+
+    if (_swipeAction == SwipeAction.none) {
+      if (diff.dx.abs() > diff.dy.abs() * 1.5) {
+        _swipeAction = SwipeAction.seek;
+        beginScrub();
+      } else if (diff.dy.abs() > diff.dx.abs() * 1.5) {
+        _swipeAction = _origin!.dx < _viewWidth * .35
+            ? SwipeAction.brightness
+            : SwipeAction.volume;
+      } else {
+        return;
+      }
+    }
+
+    if (_swipeAction == SwipeAction.seek) {
+      final span = math.min(120000, player.state.duration.inMilliseconds);
+      updateScrub(
+        Duration(
+          milliseconds:
+              _scrubStart.inMilliseconds +
+              (diff.dx / _viewWidth * span).round(),
+        ),
+      );
+      return;
+    }
 
     final dy = _origin!.dy - event.localPosition.dy; // 向上滑动为增加，向下滑动为减少
     final deltaRatio = dy / (_viewHeight * 0.6);
@@ -227,6 +288,11 @@ class PlayerInteractions extends ChangeNotifier {
       _brightness = (_initialBrightness + deltaRatio).clamp(0.01, 1.0);
       AppDevice.setBrightness(_brightness);
       _showHud(SwipeAction.brightness, _brightness);
+    } else if (_swipeAction == SwipeAction.volume) {
+      final volume = (_initialVolume + deltaRatio * 100).clamp(0.0, 100.0);
+      unawaited(player.setVolume(volume));
+      if (volume > 0) _unmutedVolume = volume;
+      _showHud(SwipeAction.volume, volume / 100);
     }
   }
 
@@ -238,17 +304,10 @@ class PlayerInteractions extends ChangeNotifier {
       return;
     }
     if (_pointer != event.pointer || _origin == null) return;
-    final delta = (_lastPosition ?? event.localPosition) - _origin!;
-    final isVertical = delta.dy.abs() >= _swipeThreshold && delta.dy.abs() > delta.dx.abs() * 1.5;
-
-    if (_swipeAction == SwipeAction.episode &&
-        _swipeEnabled &&
-        !_held &&
-        _moved &&
-        isVertical &&
-        event.timeStamp - _started < const Duration(milliseconds: 1500)) {
-      if (available()) hint(onEpisode(delta.dy < 0 ? 1 : -1));
-    } else if (_swipeAction == SwipeAction.brightness) {
+    if (_swipeAction == SwipeAction.seek) {
+      endScrub();
+    } else if (_swipeAction == SwipeAction.brightness ||
+        _swipeAction == SwipeAction.volume) {
       _scheduleDismissHud();
     }
 
@@ -262,7 +321,7 @@ class PlayerInteractions extends ChangeNotifier {
 
   void pointerCancel(PointerCancelEvent event) {
     _pointers.remove(event.pointer);
-    cancel();
+    cancel(resumeScrub: true);
     _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 600));
     if (_pointers.isEmpty) _cancelUntilRelease = false;
   }
@@ -283,8 +342,111 @@ class PlayerInteractions extends ChangeNotifier {
     });
   }
 
+  void doubleTap(double x, double width, {required bool mobile}) {
+    if (!available() || suppressTap || _scrubbing) return;
+    if (mobile && width > 0 && x < width / 3) {
+      seek(-(seekStepSeconds?.call() ?? 10));
+    } else if (mobile && width > 0 && x > width * 2 / 3) {
+      seek(seekStepSeconds?.call() ?? 10);
+    } else {
+      onTogglePlayback();
+    }
+  }
+
+  void beginScrub() {
+    if (_disposed ||
+        _scrubbing ||
+        !available() ||
+        player.state.duration <= Duration.zero)
+      return;
+    _endHold();
+    _scrubbing = true;
+    _scrubEnding = false;
+    _previewQueued = false;
+    _resumeAfterScrub = player.state.playing;
+    _scrubTarget = _scrubStart = player.state.position;
+    final ticket = ++_scrubSequence;
+    _scrubOperations = _scrubOperations
+        .catchError((Object _) {})
+        .then((_) async {
+          if (!_disposed && ticket == _scrubSequence && available()) {
+            await player.pause();
+          }
+        })
+        .catchError((Object _) {
+          if (!_disposed && ticket == _scrubSequence) {
+            cancel();
+            hint('进度预览失败，请重试');
+          }
+        });
+    notifyListeners();
+  }
+
+  void updateScrub(Duration target) {
+    if (_disposed || !_scrubbing || _scrubEnding) return;
+    _scrubTarget = Duration(
+      milliseconds: target.inMilliseconds.clamp(
+        0,
+        player.state.duration.inMilliseconds,
+      ),
+    );
+    notifyListeners();
+    _previewTimer ??= Timer(const Duration(milliseconds: 120), () {
+      _previewTimer = null;
+      if (_previewQueued || !_scrubbing || _scrubEnding) return;
+      _previewQueued = true;
+      final ticket = _scrubSequence;
+      _scrubOperations = _scrubOperations
+          .catchError((Object _) {})
+          .then((_) async {
+            if (_disposed || ticket != _scrubSequence) return;
+            _previewQueued = false;
+            final target = _scrubTarget;
+            if (!_scrubEnding && available() && target != null) {
+              await (onSeek ?? player.seek)(target);
+            }
+          })
+          .catchError((Object _) {
+            if (!_disposed && ticket == _scrubSequence) hint('预览暂不可用，松开后跳转');
+          });
+    });
+  }
+
+  void endScrub() {
+    if (_disposed || !_scrubbing || _scrubEnding) return;
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    _scrubEnding = true;
+    final ticket = _scrubSequence;
+    final target = _scrubTarget;
+    _scrubOperations = _scrubOperations.catchError((Object _) {}).then((
+      _,
+    ) async {
+      if (_disposed || ticket != _scrubSequence) return;
+      try {
+        if (!available()) return;
+        if (target != null) await (onSeek ?? player.seek)(target);
+        if (!_disposed &&
+            ticket == _scrubSequence &&
+            available() &&
+            _resumeAfterScrub) {
+          await player.play();
+        }
+      } catch (_) {
+        if (!_disposed && ticket == _scrubSequence) hint('跳转失败，请重试');
+      } finally {
+        if (!_disposed && ticket == _scrubSequence) {
+          _scrubbing = _scrubEnding = false;
+          _scrubTarget = null;
+          notifyListeners();
+        }
+      }
+    });
+  }
+
   void seek(int seconds) {
-    if (!available() || player.state.duration <= Duration.zero) return;
+    if (!available() || _scrubbing || player.state.duration <= Duration.zero)
+      return;
     _endHold();
     final target = (player.state.position.inMilliseconds + seconds * 1000)
         .clamp(0, player.state.duration.inMilliseconds);
@@ -366,6 +528,8 @@ class PlayerInteractions extends ChangeNotifier {
     _holdTimer?.cancel();
     _hintTimer?.cancel();
     _hudTimer?.cancel();
+    _previewTimer?.cancel();
+    _scrubSequence++;
     AppDevice.resetBrightness(); // 离开播放器时自动恢复手机/平板系统默认亮度
     if (_boosting) unawaited(_setRate(baseSpeed()));
     _boosting = false;

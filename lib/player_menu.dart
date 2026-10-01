@@ -264,6 +264,28 @@ class _PlayerMenuState extends State<PlayerMenu> {
           const SizedBox(height: 8),
         ],
         if (all) ...[
+          const Text('双击快进 / 快退时长'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final seconds in playbackSeekSteps)
+                ChoiceChip(
+                  key: ValueKey('menu-seek-step-$seconds'),
+                  label: Text('$seconds 秒'),
+                  selected: seconds == preferences.seekStepSeconds,
+                  onSelected: _busy
+                      ? null
+                      : (_) => _run(
+                          () => widget.onPreferences(
+                            preferences.copyWith(seekStepSeconds: seconds),
+                          ),
+                        ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
           SwitchListTile.adaptive(
             key: const ValueKey('player-preload-enabled'),
             contentPadding: EdgeInsets.zero,
@@ -314,7 +336,7 @@ class _PlayerMenuState extends State<PlayerMenu> {
           const SizedBox(height: 20),
           Text(
             widget.mobile
-                ? '上下滑切集；长按画面临时 3 倍速，松开恢复。竖屏轻点暂停，横屏轻点显示控制；双击播放或暂停。'
+                ? '左右滑动调整进度，拖动进度条可预览主画面，松开后恢复原播放状态。左侧上下滑调亮度，其余区域上滑增大音量、下滑减小音量。双击左侧快退、右侧快进、中间播放或暂停；轻点显示或隐藏控制。长按画面临时 3 倍速，松开恢复。'
                 : '空格：播放 / 暂停\n左右键：后退 / 快进 5 秒\n长按右键或画面：临时 3 倍速\n上下键：音量 ±5%，M：静音\nF、F11、Ctrl+F：全屏\nEsc：先关闭菜单，再退出全屏',
             style: helperStyle.copyWith(height: 1.6),
           ),

@@ -26,6 +26,7 @@ class PlayerControls extends StatefulWidget {
     required this.onEpisodes,
     required this.onSpeed,
     required this.onQuality,
+    required this.onSettings,
     required this.speed,
     required this.qualityLabel,
     required this.onFocusSurface,
@@ -34,7 +35,6 @@ class PlayerControls extends StatefulWidget {
     this.danmakuStatus = '',
     this.swipeEnabled = false,
     this.panelOpen = false,
-    this.onSeek,
     this.onDanmaku,
     this.onRetryDanmaku,
     this.onPush,
@@ -56,6 +56,7 @@ class PlayerControls extends StatefulWidget {
   final Future<void> Function() onEpisodes;
   final Future<void> Function() onSpeed;
   final Future<void> Function() onQuality;
+  final Future<void> Function() onSettings;
   final double speed;
   final String qualityLabel;
   final VoidCallback onFocusSurface;
@@ -64,7 +65,6 @@ class PlayerControls extends StatefulWidget {
   final String danmakuStatus;
   final bool swipeEnabled;
   final bool panelOpen;
-  final Future<void> Function(Duration)? onSeek;
   final Future<void> Function()? onDanmaku;
   final Future<void> Function()? onRetryDanmaku;
   final Future<void> Function()? onPush;
@@ -81,7 +81,7 @@ class _PlayerControlsState extends State<PlayerControls> {
   bool _visible = true;
   bool _suppressAutoPlaybackStart = false;
   bool _lastPlaying = false;
-  double? _seekValue;
+  double _doubleTapX = 0;
 
   @override
   void initState() {
@@ -131,7 +131,7 @@ class _PlayerControlsState extends State<PlayerControls> {
         widget.panelOpen != oldWidget.panelOpen ||
         widget.fullscreen != oldWidget.fullscreen ||
         widget.showOnPlaybackReady != oldWidget.showOnPlaybackReady) {
-      _seekValue = null;
+      widget.interactions.cancel();
       if (widget.showOnPlaybackReady) {
         _suppressAutoPlaybackStart = false;
       } else if (widget.enabled && !oldWidget.enabled) {
@@ -155,7 +155,13 @@ class _PlayerControlsState extends State<PlayerControls> {
   }
 
   void _interactionChanged() {
-    if (mounted && widget.interactions.feedback.isNotEmpty) _show();
+    if (!mounted) return;
+    if (widget.interactions.scrubbing ||
+        widget.interactions.feedback.isNotEmpty) {
+      _show();
+    }
+    setState(() {});
+    _scheduleHide();
   }
 
   void _scheduleHide() {
@@ -163,7 +169,7 @@ class _PlayerControlsState extends State<PlayerControls> {
     if (!widget.enabled ||
         widget.panelOpen ||
         !widget.player.state.playing ||
-        _seekValue != null) {
+        widget.interactions.scrubbing) {
       return;
     }
     _hideTimer = Timer(const Duration(seconds: 4), () {
@@ -173,7 +179,7 @@ class _PlayerControlsState extends State<PlayerControls> {
           widget.player.state.playing &&
           !widget.player.state.buffering &&
           !widget.interactions.boosting &&
-          _seekValue == null) {
+          !widget.interactions.scrubbing) {
         setState(() => _visible = false);
       }
     });
@@ -186,7 +192,8 @@ class _PlayerControlsState extends State<PlayerControls> {
   }
 
   void _tap() {
-    if (widget.interactions.suppressTap) return;
+    if (widget.interactions.suppressTap || widget.interactions.scrubbing)
+      return;
     widget.onFocusSurface();
     setState(() => _visible = !_visible);
     _scheduleHide();
@@ -216,7 +223,11 @@ class _PlayerControlsState extends State<PlayerControls> {
     final position = state.position.inMilliseconds / 1000;
     final buffered = state.buffer.inMilliseconds / 1000;
     final visible =
-        _visible || !state.playing || state.buffering || widget.panelOpen;
+        _visible ||
+        !state.playing ||
+        state.buffering ||
+        widget.panelOpen ||
+        widget.interactions.scrubbing;
     return MouseRegion(
       onHover: (_) => _show(),
       cursor: visible ? SystemMouseCursors.basic : SystemMouseCursors.none,
@@ -242,11 +253,17 @@ class _PlayerControlsState extends State<PlayerControls> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _tap,
+                onDoubleTapDown: (details) =>
+                    _doubleTapX = details.localPosition.dx,
                 onDoubleTap: () {
                   if (!widget.enabled || widget.interactions.suppressTap) {
                     return;
                   }
-                  widget.onTogglePlayback();
+                  widget.interactions.doubleTap(
+                    _doubleTapX,
+                    constraints.maxWidth,
+                    mobile: widget.swipeEnabled,
+                  );
                   _show();
                 },
               ),
@@ -293,6 +310,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                             if (widget.fullscreen || widget.swipeEnabled)
                               _topBar(),
                             if (!state.buffering &&
+                                !widget.interactions.scrubbing &&
                                 widget.enabled &&
                                 constraints.maxHeight >=
                                     (widget.swipeEnabled ? 168 : 220))
@@ -392,14 +410,24 @@ class _PlayerControlsState extends State<PlayerControls> {
           ),
           const SizedBox(width: 12),
         ],
-        IconButton.filledTonal(
-          tooltip: playing ? '暂停播放' : '开始播放',
-          iconSize: 38,
-          onPressed: () {
-            widget.onTogglePlayback();
-            _show();
-          },
-          icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+        GestureDetector(
+          onDoubleTap: widget.swipeEnabled
+              ? () {
+                  widget.onTogglePlayback();
+                  _show();
+                }
+              : null,
+          child: IconButton.filledTonal(
+            tooltip: playing ? '暂停播放' : '开始播放',
+            iconSize: 38,
+            onPressed: () {
+              widget.onTogglePlayback();
+              _show();
+            },
+            icon: Icon(
+              playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            ),
+          ),
         ),
         if (showSkip) ...[
           const SizedBox(width: 12),
@@ -493,6 +521,10 @@ class _PlayerControlsState extends State<PlayerControls> {
     required double position,
     required double buffered,
   }) {
+    final previewPosition =
+        (widget.interactions.scrubTarget?.inMilliseconds ??
+            (position * 1000).round()) /
+        1000;
     final timeStyle = TextStyle(
       fontSize: 12,
       color: Colors.white.withValues(alpha: .82),
@@ -507,7 +539,7 @@ class _PlayerControlsState extends State<PlayerControls> {
             SizedBox(
               width: 43,
               child: Text(
-                formatPosition(_seekValue ?? position),
+                formatPosition(previewPosition),
                 style: timeStyle,
                 textAlign: TextAlign.end,
               ),
@@ -526,10 +558,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                 ),
                 child: Slider(
                   key: const ValueKey('player-progress'),
-                  value: (_seekValue ?? position).clamp(
-                    0,
-                    duration > 0 ? duration : 1,
-                  ),
+                  value: previewPosition.clamp(0, duration > 0 ? duration : 1),
                   max: duration > 0 ? duration : 1,
                   secondaryTrackValue: buffered.clamp(
                     0,
@@ -539,6 +568,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                   onChangeStart: widget.enabled && duration > 0
                       ? (_) {
                           widget.interactions.cancel();
+                          widget.interactions.beginScrub();
                           _hideTimer?.cancel();
                         }
                       : null,
@@ -546,15 +576,17 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ? null
                       : (value) {
                           _hideTimer?.cancel();
-                          setState(() => _seekValue = value);
+                          widget.interactions.updateScrub(
+                            Duration(milliseconds: (value * 1000).round()),
+                          );
                         },
                   onChangeEnd: (value) {
                     if (widget.enabled && duration > 0) {
-                      (widget.onSeek ?? widget.player.seek)(
+                      widget.interactions.updateScrub(
                         Duration(milliseconds: (value * 1000).round()),
                       );
+                      widget.interactions.endScrub();
                     }
-                    setState(() => _seekValue = null);
                     _show();
                   },
                 ),
@@ -612,7 +644,7 @@ class _PlayerControlsState extends State<PlayerControls> {
     double visualWidth = 36,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final enabled = onPressed != null;
+    final enabled = onPressed != null && !widget.interactions.scrubbing;
     final foreground = selected
         ? scheme.primary
         : Colors.white.withValues(alpha: enabled ? .92 : .36);
@@ -632,7 +664,7 @@ class _PlayerControlsState extends State<PlayerControls> {
         child: GestureDetector(
           key: key,
           behavior: HitTestBehavior.opaque,
-          onTap: onPressed,
+          onTap: enabled ? onPressed : null,
           child: SizedBox(
             width: targetWidth,
             height: 48,
@@ -812,6 +844,12 @@ class _PlayerControlsState extends State<PlayerControls> {
 
   Widget _mobileControlRow({required bool fullscreen}) {
     final tools = [
+      _toolIcon(
+        key: const ValueKey('player-settings'),
+        tooltip: '播放设置',
+        icon: Icons.settings_rounded,
+        onPressed: widget.enabled ? () => _panel(widget.onSettings) : null,
+      ),
       _toolText(
         key: const ValueKey('player-speed'),
         tooltip: '倍速',
@@ -992,14 +1030,57 @@ class _PlayerControlsState extends State<PlayerControls> {
     builder: (context, _) {
       final hud = widget.interactions.hudState;
       final feedback = widget.interactions.feedback;
-      if (hud.type == SwipeAction.brightness) {
+      final target = widget.interactions.scrubTarget;
+      if (target != null) {
+        final duration = widget.player.state.duration.inMilliseconds;
+        return IgnorePointer(
+          child: Align(
+            alignment: const Alignment(0, -.55),
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '进度预览 ${formatPosition(target.inMilliseconds / 1000)} / ${formatPosition(duration / 1000)}',
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 180,
+                    child: LinearProgressIndicator(
+                      value: duration > 0
+                          ? (target.inMilliseconds / duration).clamp(0.0, 1.0)
+                          : 0,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+      if (hud.type == SwipeAction.brightness ||
+          hud.type == SwipeAction.volume) {
+        final brightness = hud.type == SwipeAction.brightness;
         final value = hud.value.clamp(0.0, 1.0);
         final percent = (value * 100).round();
-        final icon = value < 0.33
+        final icon = !brightness
+            ? value == 0
+                  ? Icons.volume_off_rounded
+                  : value < .5
+                  ? Icons.volume_down_rounded
+                  : Icons.volume_up_rounded
+            : value < 0.33
             ? Icons.brightness_low_rounded
             : value < 0.66
-                ? Icons.brightness_medium_rounded
-                : Icons.brightness_high_rounded;
+            ? Icons.brightness_medium_rounded
+            : Icons.brightness_high_rounded;
         return IgnorePointer(
           child: Center(
             child: Container(
@@ -1008,7 +1089,10 @@ class _PlayerControlsState extends State<PlayerControls> {
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: .75),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: .15), width: 1),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: .15),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: .4),
@@ -1030,13 +1114,15 @@ class _PlayerControlsState extends State<PlayerControls> {
                       child: LinearProgressIndicator(
                         value: value,
                         backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.white,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '亮度 $percent%',
+                    '${brightness ? '亮度' : '音量'} $percent%',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
