@@ -24,14 +24,11 @@ type requestBackoff struct {
 }
 
 func (backoff *requestBackoff) Error() string {
-	seconds := max(1, int(time.Until(backoff.until).Seconds()+0.999))
-	if backoff.status == 0 {
-		return fmt.Sprintf("%s，请在 %d 秒后重试", backoff.reason, seconds)
-	}
 	reason := ""
 	if backoff.reason != "" {
 		reason = "：" + backoff.reason
 	}
+	seconds := max(1, int(time.Until(backoff.until).Seconds()+0.999))
 	return fmt.Sprintf("%s HTTP %d%s，请在 %d 秒后重试", backoff.host, backoff.status, reason, seconds)
 }
 

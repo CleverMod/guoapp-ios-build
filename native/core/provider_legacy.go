@@ -215,9 +215,6 @@ func (err *legacyAPIError) Error() string {
 func (d *Downloader) legacyRequest(ctx context.Context, method, apiPath string, params any, access legacyAccess) ([]byte, error) {
 	var lastErr error
 	attempts := d.cfg.Retries
-	if method == http.MethodPost && apiPath == "/api/app/mine/login/h5" {
-		attempts = 1
-	}
 	if attempts < 1 {
 		attempts = 1
 	}
