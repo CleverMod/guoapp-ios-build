@@ -475,6 +475,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "cancelPlayback":
 		engine.nativeCancelPlayback(input.Sequence)
 		return true, nil
+	case "playbackStatus":
+		return engine.nativePlaybackStatus(ctx, input.Session, input.Command == "ensure")
 	case "release":
 		engine.nativeReleasePlayback(input.Session)
 		return true, nil

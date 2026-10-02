@@ -190,7 +190,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             : Player(
                 configuration: const PlayerConfiguration(
                   bufferSize: 32 * 1024 * 1024,
-                  logLevel: MPVLogLevel.error,
+                  logLevel: MPVLogLevel.warn,
                 ),
               ));
     _video = widget.videoBuilder == null && !Platform.isAndroid
@@ -237,7 +237,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     _subscriptions.add(
       _player.stream.log.listen((log) {
         if (!_closed &&
-            (log.level == 'error' || log.level == 'fatal') &&
+            (log.level == 'error' ||
+                log.level == 'fatal' ||
+                log.level == 'warn') &&
             log.text.trim().isNotEmpty) {
           DiaryService.add(
             '[MPV] ${log.level} ${log.prefix}: ${log.text.trim()}',
@@ -330,10 +332,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!_closed &&
           _acceptErrors &&
           !_loading &&
+          !_interactions.scrubbing &&
           _error == null &&
           _health.stalled(
             position: _player.state.position,
-            playing: _player.state.playing && _playIntent,
+            playing: _playIntent,
             foreground: _foreground,
             now: DateTime.now(),
           )) {
@@ -810,7 +813,15 @@ class _PlayerScreenState extends State<PlayerScreen>
     _danmaku.setPlan(null);
     _errorTimer?.cancel();
     _pendingError = false;
+    final generation = _generation;
     final position = _currentPosition;
+    await _reportPlaybackProxy(current);
+    if (_closed ||
+        !mounted ||
+        generation != _generation ||
+        !identical(_plan, current)) {
+      return;
+    }
     final action = current.local
         ? PlaybackRecoveryAction.stop
         : _recovery.next(current);
@@ -865,6 +876,29 @@ class _PlayerScreenState extends State<PlayerScreen>
     unawaited(_player.playOrPause());
     if (!_playIntent) unawaited(_saveProgress(flush: true));
     _syncDanmaku();
+  }
+
+  Future<void> _reportPlaybackProxy(
+    PlaybackPlan plan, {
+    bool ensure = false,
+  }) async {
+    if (plan.local || plan.session.isEmpty) return;
+    try {
+      final status = await widget.repository.playbackStatus(
+        plan,
+        ensure: ensure,
+      );
+      if (status.isEmpty) return;
+      DiaryService.add(
+        '[Proxy] address=${status['address']}, serving=${status['serving']}, restarted=${status['restarted']}, restarts=${status['restarts']}, lastError=${status['lastError']}',
+      );
+      for (final event in status['events'] as List? ?? const []) {
+        DiaryService.add('[Proxy] $event');
+      }
+    } catch (error) {
+      DiaryService.add('[Proxy] 检查失败: $error');
+      if (ensure) rethrow;
+    }
   }
 
   Future<void> _saveProgress({bool flush = false}) async {
@@ -1026,6 +1060,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         }
         final platform = _player.platform;
         if (platform is NativePlayer) {
+          if (Platform.isIOS) {
+            await platform.setProperty('cache-on-disk', 'no');
+          }
           if (Platform.isAndroid) {
             if (_television) {
               await platform.setProperty('hwdec', 'mediacodec');
@@ -1075,6 +1112,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         }
         _plan = plan;
         installed = true;
+        await _reportPlaybackProxy(plan, ensure: true);
+        if (_closed || ticket != _generation) return;
         _acceptErrors = true;
         DiaryService.add(
           '[Play] 调用 _player.open: source=${widget.detail.drama.source}, episode=${widget.detail.episodes[index].number}, url=${plan.url}, headers=${plan.headers.keys.toList()}, cenc=${plan.decryptionKey.isNotEmpty}, quality=${plan.quality}, route=${plan.routeIndex + 1}/${plan.routeCount}',

@@ -182,6 +182,10 @@ abstract class AppRepository {
   Future<DramaDetail> detail(Drama drama);
   Future<PlaybackPlan> resolve(Drama drama, Episode episode, {int quality = 0});
   Future<PlaybackPlan> fallback(PlaybackPlan current);
+  Future<Map<String, dynamic>> playbackStatus(
+    PlaybackPlan plan, {
+    bool ensure = false,
+  }) async => {};
   Future<void> cancelPlayback();
   Future<void> release(String session);
 }
@@ -741,6 +745,16 @@ class NativeRepository extends AppRepository {
   Future<void> cancelPlayback() async {
     await _call({'action': 'cancelPlayback', 'sequence': ++_playbackSequence});
   }
+
+  @override
+  Future<Map<String, dynamic>> playbackStatus(
+    PlaybackPlan plan, {
+    bool ensure = false,
+  }) => _call({
+    'action': 'playbackStatus',
+    'session': plan.session,
+    'command': ensure ? 'ensure' : 'status',
+  });
 
   @override
   bool get supportsDownloads => access?.canDownload ?? true;

@@ -88,6 +88,8 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 		engine.mu.Lock()
 		if engine.stream == nil {
 			engine.stream, err = newNativeStreamServer(engine.downloader)
+		} else {
+			_, err = engine.stream.nativeEnsureServing(ctx)
 		}
 		stream := engine.stream
 		engine.mu.Unlock()

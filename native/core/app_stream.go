@@ -7,8 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -36,6 +36,7 @@ type nativeStreamSession struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	lastUsed    time.Time
+	events      []string
 }
 
 type nativeStreamServer struct {
@@ -44,6 +45,9 @@ type nativeStreamServer struct {
 	address    string
 	sessions   map[string]*nativeStreamSession
 	server     *http.Server
+	serving    bool
+	serveError string
+	restarts   int
 }
 
 func (stream *nativeStreamServer) nativeRequest(request *http.Request) (*http.Response, error) {
@@ -55,14 +59,10 @@ func (stream *nativeStreamServer) nativeRequest(request *http.Request) (*http.Re
 var nativePlaylistURI = regexp.MustCompile(`URI="([^"]+)"`)
 
 func newNativeStreamServer(d *Downloader) (*nativeStreamServer, error) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return nil, errors.New("无法初始化本机播放器")
+	stream := &nativeStreamServer{downloader: d, sessions: map[string]*nativeStreamSession{}}
+	if _, err := stream.nativeEnsureServing(context.Background()); err != nil {
+		return nil, err
 	}
-	stream := &nativeStreamServer{downloader: d, address: "http://" + listener.Addr().String(), sessions: map[string]*nativeStreamSession{}}
-	server := &http.Server{Handler: http.HandlerFunc(stream.nativeServe), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
-	stream.server = server
-	go func() { _ = server.Serve(listener) }()
 	return stream, nil
 }
 
@@ -251,10 +251,12 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 		if strings.Contains(asset.contentType, "mpegurl") {
 			body, err := stream.nativeRewrite(parts[0], session, string(asset.data), asset.address)
 			if err != nil {
+				stream.nativeRecord(session, "播放列表改写失败: "+err.Error())
 				http.Error(writer, err.Error(), http.StatusBadGateway)
 				return
 			}
 			writer.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			stream.nativeRecord(session, fmt.Sprintf("缓存播放列表 method=%s bytes=%d", request.Method, len(body)))
 			if request.Method == http.MethodGet {
 				_, _ = io.WriteString(writer, body)
 			}
@@ -281,6 +283,7 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 	}
 	response, err := stream.nativeRequest(upstream)
 	if err != nil {
+		stream.nativeRecord(session, "媒体请求失败: "+publicError(err).Error())
 		http.Error(writer, "读取媒体失败，请重试", http.StatusBadGateway)
 		return
 	}
@@ -288,6 +291,7 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 		err := stream.downloader.catalogResponseError(upstream, response, body)
+		stream.nativeRecord(session, fmt.Sprintf("上游 HTTP %d: %s", response.StatusCode, err.Error()))
 		http.Error(writer, err.Error(), response.StatusCode)
 		return
 	}
@@ -297,6 +301,7 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 		finalURL = response.Request.URL
 	}
 	playlist := strings.Contains(asset.contentType, "mpegurl") || strings.Contains(contentType, "mpegurl") || strings.HasSuffix(strings.ToLower(finalURL.Path), ".m3u8")
+	stream.nativeRecord(session, fmt.Sprintf("上游 HTTP %d host=%s type=%s playlist=%t method=%s", response.StatusCode, finalURL.Hostname(), contentType, playlist, request.Method))
 	if playlist && request.Method == http.MethodHead {
 		writer.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		writer.WriteHeader(http.StatusOK)
@@ -305,16 +310,23 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 	if playlist && request.Method == http.MethodGet {
 		body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20+1))
 		if err != nil || len(body) > 4<<20 {
+			message := "播放列表超过读取限制"
+			if err != nil {
+				message = publicError(err).Error()
+			}
+			stream.nativeRecord(session, "播放列表读取失败: "+message)
 			http.Error(writer, "播放列表过大或读取失败", http.StatusBadGateway)
 			return
 		}
 		text := strings.TrimSpace(strings.TrimPrefix(string(body), "\ufeff"))
 		if !strings.HasPrefix(text, "#EXTM3U") {
+			stream.nativeRecord(session, "上游未返回有效 M3U8")
 			http.Error(writer, "播放列表无效", http.StatusBadGateway)
 			return
 		}
 		rewritten, err := stream.nativeRewrite(parts[0], session, text, finalURL.String())
 		if err != nil {
+			stream.nativeRecord(session, "播放列表改写失败: "+err.Error())
 			http.Error(writer, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -329,6 +341,9 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 	}
 	writer.WriteHeader(response.StatusCode)
 	if request.Method == http.MethodGet {
-		_, _ = io.Copy(writer, response.Body)
+		_, err := io.Copy(writer, response.Body)
+		if err != nil && ctx.Err() == nil {
+			stream.nativeRecord(session, "媒体流转发中断: "+publicError(err).Error())
+		}
 	}
 }
