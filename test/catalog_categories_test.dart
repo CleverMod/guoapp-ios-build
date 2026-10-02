@@ -161,15 +161,17 @@ void main() {
   }
 
   testWidgets(
-    'Huangguo AI has its own catalog and categories and rejects stale replies',
+    'one Huangguo source merges catalogs and categories and rejects stale replies',
     (tester) async {
       final repository = CategoryRepository();
       await mount(tester, repository, source: 'huangguoai');
-      expect(find.text('黄果 AI'), findsOneWidget);
-      expect(find.text('黄果'), findsNothing);
+      expect(find.text('黄果'), findsOneWidget);
       expect(find.text('入口'), findsNothing);
       expect(find.text('旧版'), findsNothing);
-      expect(repository.categoryRequests, ['huangguoai||1']);
+      expect(
+        repository.categoryRequests.toSet(),
+        containsAll(['huangguo-video||1', 'huangguoai||1', 'cloudfront||1']),
+      );
       expect(find.text('AI成人短剧'), findsNothing);
       expect(find.text('AI 短剧'), findsOneWidget);
       Future<void> choose(String name) async {
@@ -192,15 +194,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('过期分类结果'), findsNothing);
-      expect(repository.categoryRequests, contains('huangguoai|ai-duanju|1'));
-      expect(find.text('huangguoai · ai-duanju'), findsOneWidget);
-      expect(find.text('cloudfront · old-short'), findsNothing);
       expect(
-        repository.categoryRequests.every(
-          (request) => request.startsWith('huangguoai|'),
-        ),
-        isTrue,
+        repository.categoryRequests,
+        containsAll(['huangguoai|ai-duanju|1', 'cloudfront|old-short|1']),
       );
+      expect(find.text('huangguoai · ai-duanju'), findsOneWidget);
+      expect(find.text('cloudfront · old-short'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
     skip: !allSourcesEnabled,
@@ -238,25 +237,15 @@ void main() {
   );
 
   test(
-    'all-source pagination retries failed member without skipping or reloading exhausted members',
+    'group pagination retries failed member without skipping or reloading exhausted members',
     () async {
       final repository = CategoryRepository()
         ..failLegacy = true
         ..paginate = true;
       final browser = CatalogBrowser(repository);
-      final group = SourceGroup(
-        'all',
-        '全部站源',
-        SourceSite.allValues
-            .where(
-              (source) => const [
-                'huangguo-video',
-                'huangguoai',
-                'cloudfront',
-              ].contains(source.id),
-            )
-            .toList(),
-      );
+      final group = SourceGroup.fromSources(
+        SourceSite.allValues,
+      ).firstWhere((group) => group.id == 'huangguo');
       final first = await browser.load(group);
       expect(first.items.length, 2);
       expect(first.warning, '合成入口失败');
