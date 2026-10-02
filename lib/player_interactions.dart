@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app_layout.dart';
+import 'diary_service.dart';
 import 'widgets.dart';
 
 enum SwipeAction { none, seek, brightness, volume }
@@ -39,6 +40,21 @@ class PlayerInteractions extends ChangeNotifier {
           }
         })
         .catchError((_) {});
+    if (AppDevice.supportsMediaVolume) {
+      _mediaVolumeSubscription = AppDevice.mediaVolumeChanges.listen(
+        _systemVolumeChanged,
+        onError: (Object error) => _volumeFailed(error, feedback: false),
+      );
+      unawaited(
+        AppDevice.getMediaVolume()
+            .then((value) {
+              if (!_disposed) _systemVolumeChanged(value);
+            })
+            .catchError(
+              (Object error) => _volumeFailed(error, feedback: false),
+            ),
+      );
+    }
   }
 
   final Player player;
@@ -50,6 +66,13 @@ class PlayerInteractions extends ChangeNotifier {
   final Future<void> Function(Duration)? onSeek;
   final int Function()? seekStepSeconds;
   late final StreamSubscription<bool> _playing;
+  StreamSubscription<double>? _mediaVolumeSubscription;
+  double? _systemVolume;
+  double? _pendingSystemVolume;
+  double? _volumeDelta;
+  bool _volumeReady = false;
+  bool _changingSystemVolume = false;
+  int _volumeGesture = 0;
   Timer? _holdTimer;
   Timer? _hintTimer;
   Future<void> _rates = Future<void>.value();
@@ -105,6 +128,70 @@ class PlayerInteractions extends ChangeNotifier {
   bool get boosting => _boosting;
   bool get suppressTap => DateTime.now().isBefore(_ignoreTapUntil);
   Future<void> get pendingRates => _rates;
+
+  void _systemVolumeChanged(double value) {
+    if (_disposed) return;
+    _systemVolume = value * 100;
+    if (value > 0) _unmutedVolume = _systemVolume!;
+    if (_hudState.type == SwipeAction.volume) {
+      _showHud(SwipeAction.volume, value);
+      if (_pointer == null || _swipeAction != SwipeAction.volume) {
+        _scheduleDismissHud();
+      }
+    }
+  }
+
+  void _volumeFailed(Object error, {bool feedback = true}) {
+    if (_disposed) return;
+    DiaryService.add('[Volume] 系统媒体音量失败: $error');
+    if (feedback) {
+      hint('系统音量调节失败，请使用音量键重试');
+    }
+  }
+
+  void _setSwipeVolume(double deltaRatio) {
+    _volumeDelta = deltaRatio;
+    if (AppDevice.supportsMediaVolume && !_volumeReady) return;
+    final volume = (_initialVolume + deltaRatio * 100).clamp(0.0, 100.0);
+    _setVolume(volume, hud: true);
+  }
+
+  void _setVolume(double volume, {required bool hud}) {
+    if (_disposed || !available()) return;
+    if (AppDevice.supportsMediaVolume) {
+      _pendingSystemVolume = volume;
+      _showHud(SwipeAction.volume, (_systemVolume ?? _initialVolume) / 100);
+      if (_pointer == null || _swipeAction != SwipeAction.volume) {
+        _scheduleDismissHud();
+      }
+      if (!_changingSystemVolume) unawaited(_flushSystemVolume());
+      return;
+    }
+    unawaited(player.setVolume(volume));
+    if (volume > 0) _unmutedVolume = volume;
+    if (hud) {
+      _showHud(SwipeAction.volume, volume / 100);
+    } else {
+      hint(volume == 0 ? '已静音' : '音量 ${volume.round()}%');
+    }
+  }
+
+  Future<void> _flushSystemVolume() async {
+    _changingSystemVolume = true;
+    try {
+      if (player.state.volume != 100) await player.setVolume(100);
+      while (!_disposed && available() && _pendingSystemVolume != null) {
+        final volume = _pendingSystemVolume!;
+        _pendingSystemVolume = null;
+        await AppDevice.setMediaVolume(volume / 100);
+      }
+    } catch (error) {
+      _volumeFailed(error);
+    } finally {
+      _pendingSystemVolume = null;
+      _changingSystemVolume = false;
+    }
+  }
 
   void hint(String message, {bool persistent = false}) {
     if (_disposed) return;
@@ -169,6 +256,9 @@ class PlayerInteractions extends ChangeNotifier {
 
   void cancel({bool resumeScrub = false}) {
     if (_disposed) return;
+    _volumeGesture++;
+    _pendingSystemVolume = null;
+    _volumeDelta = null;
     final resume = resumeScrub && _scrubbing && _resumeAfterScrub;
     _previewTimer?.cancel();
     _previewTimer = null;
@@ -228,6 +318,32 @@ class PlayerInteractions extends ChangeNotifier {
     _swipeAction = SwipeAction.none;
     _initialBrightness = _brightness;
     _initialVolume = player.state.volume.clamp(0.0, 100.0);
+    _volumeDelta = null;
+    _volumeReady = !AppDevice.supportsMediaVolume;
+    final volumeTicket = ++_volumeGesture;
+    if (_swipeEnabled &&
+        event.localPosition.dx >= width * .35 &&
+        AppDevice.supportsMediaVolume) {
+      unawaited(
+        AppDevice.getMediaVolume()
+            .then((value) {
+              if (_disposed || volumeTicket != _volumeGesture || !available()) {
+                return;
+              }
+              _systemVolumeChanged(value);
+              _initialVolume = value * 100;
+              _volumeReady = true;
+              if (_swipeAction == SwipeAction.volume && _volumeDelta != null) {
+                _setSwipeVolume(_volumeDelta!);
+              }
+            })
+            .catchError((Object error) {
+              if (!_disposed && volumeTicket == _volumeGesture) {
+                _volumeFailed(error);
+              }
+            }),
+      );
+    }
     if (_swipeEnabled && event.localPosition.dx < width * .35) {
       unawaited(
         AppDevice.getBrightness().then((value) {
@@ -289,10 +405,7 @@ class PlayerInteractions extends ChangeNotifier {
       AppDevice.setBrightness(_brightness);
       _showHud(SwipeAction.brightness, _brightness);
     } else if (_swipeAction == SwipeAction.volume) {
-      final volume = (_initialVolume + deltaRatio * 100).clamp(0.0, 100.0);
-      unawaited(player.setVolume(volume));
-      if (volume > 0) _unmutedVolume = volume;
-      _showHud(SwipeAction.volume, volume / 100);
+      _setSwipeVolume(deltaRatio);
     }
   }
 
@@ -456,19 +569,44 @@ class PlayerInteractions extends ChangeNotifier {
 
   void changeVolume(double delta) {
     if (!available()) return;
+    if (AppDevice.supportsMediaVolume) {
+      unawaited(_changeSystemVolume(delta: delta));
+      return;
+    }
     final volume = (player.state.volume + delta).clamp(0.0, 100.0);
-    unawaited(player.setVolume(volume));
-    if (volume > 0) _unmutedVolume = volume;
-    hint(volume == 0 ? '已静音' : '音量 ${volume.round()}%');
+    _setVolume(volume, hud: false);
   }
 
   void toggleMute() {
     if (!available()) return;
+    if (AppDevice.supportsMediaVolume) {
+      unawaited(_changeSystemVolume(mute: true));
+      return;
+    }
     final current = player.state.volume;
     if (current > 0) _unmutedVolume = current;
     final target = current > 0 ? 0.0 : _unmutedVolume;
-    unawaited(player.setVolume(target));
-    hint(target == 0 ? '已静音' : '音量 ${target.round()}%');
+    _setVolume(target, hud: false);
+  }
+
+  Future<void> _changeSystemVolume({
+    double delta = 0,
+    bool mute = false,
+  }) async {
+    try {
+      final current = await AppDevice.getMediaVolume();
+      if (_disposed || !available()) return;
+      _systemVolumeChanged(current);
+      final volume = current * 100;
+      final target = mute
+          ? volume > 0
+                ? 0.0
+                : _unmutedVolume
+          : (volume + delta).clamp(0.0, 100.0);
+      _setVolume(target, hud: false);
+    } catch (error) {
+      _volumeFailed(error);
+    }
   }
 
   KeyEventResult key(KeyEvent event) {
@@ -525,6 +663,9 @@ class PlayerInteractions extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _volumeGesture++;
+    _pendingSystemVolume = null;
+    _mediaVolumeSubscription?.cancel();
     _holdTimer?.cancel();
     _hintTimer?.cancel();
     _hudTimer?.cancel();

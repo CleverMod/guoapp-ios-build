@@ -6,9 +6,28 @@ class DiaryService {
   static final List<String> _entries = <String>[];
   static const int maxEntries = 500;
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  static final _mediaURL = RegExp(r'''https?://[^\s<>"'\]]+''');
+  static final _decryptionKey = RegExp(
+    r'''(decryption_key["']?\s*[=:]\s*["']?)[0-9a-f]{32}''',
+    caseSensitive: false,
+  );
 
   /// 记录一条日记
   static void add(String message) {
+    message = message
+        .replaceAllMapped(_decryptionKey, (match) {
+          return '${match[1]}[redacted]';
+        })
+        .replaceAllMapped(_mediaURL, (match) {
+          final uri = Uri.tryParse(match[0]!);
+          if (uri == null || !uri.hasAuthority) return '[media URL]';
+          return Uri(
+            scheme: uri.scheme,
+            host: uri.host,
+            port: uri.hasPort ? uri.port : null,
+            path: uri.path,
+          ).toString();
+        });
     final now = DateTime.now();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}.${(now.millisecond ~/ 100)}';
@@ -79,7 +98,10 @@ class DiaryService {
                 onPressed: () => copyToClipboard(dialogContext),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, color: Colors.white70),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.white70,
+                ),
                 tooltip: '清空日记',
                 onPressed: () => clear(),
               ),

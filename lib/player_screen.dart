@@ -235,7 +235,21 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
     _configurePictureInPicture();
     _subscriptions.add(
+      _player.stream.log.listen((log) {
+        if (!_closed &&
+            (log.level == 'error' || log.level == 'fatal') &&
+            log.text.trim().isNotEmpty) {
+          DiaryService.add(
+            '[MPV] ${log.level} ${log.prefix}: ${log.text.trim()}',
+          );
+        }
+      }),
+    );
+    _subscriptions.add(
       _player.stream.error.listen((error) {
+        if (!_closed && error.trim().isNotEmpty) {
+          DiaryService.add('[Play] 播放器错误: $error');
+        }
         if (_enhancement.handlePlaybackError(error)) return;
         if (!_closed && _acceptErrors && mounted && error.trim().isNotEmpty) {
           _queueRecovery();
@@ -253,6 +267,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           final duration = _player.state.duration;
           if (duration <= Duration.zero ||
               _player.state.position < duration - const Duration(seconds: 2)) {
+            DiaryService.add(
+              '[Play] 提前结束: position=${_player.state.position.inMilliseconds} ms, duration=${duration.inMilliseconds} ms',
+            );
             _queueRecovery();
           } else if (_autoAdvance &&
               _foreground &&
@@ -797,6 +814,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     final action = current.local
         ? PlaybackRecoveryAction.stop
         : _recovery.next(current);
+    DiaryService.add(
+      '[Play] 自动恢复: action=${action.name}, source=${widget.detail.drama.source}, episode=${widget.detail.episodes[_index].number}, route=${current.routeIndex + 1}/${current.routeCount}, quality=${current.quality}, position=$position s',
+    );
     if (action == PlaybackRecoveryAction.stop) {
       _resumePosition = position;
       final ticket = _generation;
@@ -1057,7 +1077,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         installed = true;
         _acceptErrors = true;
         DiaryService.add(
-          '[Play] 调用 _player.open: url=${plan.url}, headers=${plan.headers.keys.toList()}',
+          '[Play] 调用 _player.open: source=${widget.detail.drama.source}, episode=${widget.detail.episodes[index].number}, url=${plan.url}, headers=${plan.headers.keys.toList()}, cenc=${plan.decryptionKey.isNotEmpty}, quality=${plan.quality}, route=${plan.routeIndex + 1}/${plan.routeCount}',
         );
         await _player.open(
           Media(

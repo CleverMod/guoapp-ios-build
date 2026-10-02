@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 
 export 'app_build.dart';
 
-const appVersion = '0.2.72';
+const appVersion = '0.2.74';
 
 ThemeData televisionTheme(ThemeData theme) {
   final colors = theme.colorScheme;
@@ -48,11 +48,27 @@ class AppDevice {
   final bool television;
   final String version;
   static const channel = MethodChannel('duanju/device');
+  static bool get supportsMediaVolume =>
+      defaultTargetPlatform == TargetPlatform.iOS;
+  static final Stream<double> mediaVolumeChanges =
+      const EventChannel('duanju/media_volume').receiveBroadcastStream().map(
+        (value) => (value as num).toDouble().clamp(0.0, 1.0),
+      );
+
+  static Future<double> getMediaVolume() async {
+    final value = await channel.invokeMethod<double>('getMediaVolume');
+    if (value == null) throw StateError('系统音量读取失败');
+    return value.clamp(0.0, 1.0);
+  }
+
+  static Future<void> setMediaVolume(double volume) => channel
+      .invokeMethod<void>('setMediaVolume', {'volume': volume.clamp(0.0, 1.0)});
 
   static Future<AppDevice> detect({
     AppDevice fallback = const AppDevice(),
   }) async {
-    if (defaultTargetPlatform != TargetPlatform.android) {
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
       return const AppDevice();
     }
     try {
