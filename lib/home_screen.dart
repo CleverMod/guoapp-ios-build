@@ -16,6 +16,7 @@ import 'detail_screen.dart';
 import 'playback_launch_screen.dart';
 import 'downloads_screen.dart';
 import 'local_store.dart';
+import 'live_channels_screen.dart';
 import 'lan_screen.dart';
 import 'models.dart';
 import 'remote_widgets.dart';
@@ -858,6 +859,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text('取消'),
                 ),
               ] else ...[
+                if (allSourcesEnabled && !widget.store.locked)
+                  IconButton(
+                    key: const ValueKey('open-live-tv'),
+                    tooltip: '电视直播',
+                    icon: const Icon(Icons.live_tv_rounded),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => LiveChannelsScreen(
+                          repository: widget.repository,
+                          store: widget.store,
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_tab == 1)
                   IconButton(
                     key: const ValueKey('follow-lan-sync'),

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
+import 'live_models.dart';
 import 'danmaku_models.dart';
 import 'background_downloads.dart';
 import 'local_store.dart';
@@ -67,6 +68,11 @@ class AppFailure implements Exception {
 }
 
 abstract class AppRepository {
+  Future<List<LiveChannel>> liveChannels() async =>
+      throw AppFailure('当前环境不支持直播');
+  Future<LivePlayback> openLive(String channel) async =>
+      throw AppFailure('当前环境不支持直播');
+  Future<void> releaseLive(String session) async {}
   Future<Map<String, dynamic>> lan(
     String command,
     Map<String, dynamic> payload,
@@ -191,6 +197,29 @@ abstract class AppRepository {
 }
 
 class NativeRepository extends AppRepository {
+  @override
+  Future<List<LiveChannel>> liveChannels() async {
+    if (!allSourcesEnabled) throw AppFailure('当前版本不包含直播');
+    final result = await _call({'action': 'liveChannels'});
+    return [
+      for (final item in result['items'] as List)
+        LiveChannel.fromJson(Map<String, dynamic>.from(item as Map)),
+    ];
+  }
+
+  @override
+  Future<LivePlayback> openLive(String channel) async {
+    if (!allSourcesEnabled) throw AppFailure('当前版本不包含直播');
+    return LivePlayback.fromJson(
+      await _call({'action': 'openLive', 'source': channel}),
+    );
+  }
+
+  @override
+  Future<void> releaseLive(String session) async {
+    await _call({'action': 'releaseLive', 'session': session});
+  }
+
   static final _coverDecoder = CoverDecoder();
   NativeRepository({this.background = false});
   final bool background;
@@ -509,6 +538,7 @@ class NativeRepository extends AppRepository {
           {
             'initialize',
             'release',
+            'releaseLive',
             'cancelPlayback',
             'cancelRead',
             'updateSystemProxy',
@@ -595,7 +625,11 @@ class NativeRepository extends AppRepository {
       final data = response['data'];
       if (!unrestricted && epoch != access?.profileEpoch) {
         if (data is Map && data['session'] is String) {
-          await release(data['session'] as String);
+          if (action == 'openLive') {
+            await releaseLive(data['session'] as String);
+          } else {
+            await release(data['session'] as String);
+          }
         }
         if (action == 'workLease' && input['command'] == 'start') {
           await workLease(input['jobId'] as String, 'end');

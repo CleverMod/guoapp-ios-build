@@ -148,6 +148,8 @@ type nativePlan struct {
 }
 
 type nativeEngine struct {
+	liveMu           sync.Mutex
+	live             *yspLiveServer
 	lanMu            sync.Mutex
 	lan              *nativeLANServer
 	settingsMu       sync.Mutex
@@ -379,6 +381,22 @@ func nativeDispatch(input nativeInput) (any, error) {
 		ctx = work
 	}
 	switch input.Action {
+	case "liveChannels":
+		return map[string]any{"items": yspChannels}, nil
+	case "openLive":
+		live, err := engine.liveServer()
+		if err != nil {
+			return nil, err
+		}
+		return live.open(ctx, input.Source)
+	case "releaseLive":
+		engine.liveMu.Lock()
+		live := engine.live
+		engine.liveMu.Unlock()
+		if live != nil {
+			live.release(input.Session)
+		}
+		return true, nil
 	case "lan":
 		return engine.nativeLAN(ctx, input.Command, input.LAN)
 	case "updateSystemProxy":

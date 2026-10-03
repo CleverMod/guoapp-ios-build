@@ -279,3 +279,47 @@ func TestLegacyFailedLoginSnapshotMigrationPreservesValidSessions(t *testing.T) 
 		})
 	}
 }
+
+func TestLegacyBundledSessionStartsWithoutLoginAndPreservesLocalSession(t *testing.T) {
+	previous := bundledLegacySessionBase64
+	t.Cleanup(func() { bundledLegacySessionBase64 = previous })
+	d := legacyFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
+		t.Fatal("bundled session attempted a fresh login", request.URL.Path)
+		return nil, errors.New("unexpected request")
+	})
+	seed := legacySessionState{Version: 1, Scope: d.legacySessionScope(), DeviceID: "0123456789ABCDEF1789290000000", Token: "bundled-fixture-session", Protocol: fixtureLegacyProtocol, UpdatedAt: time.Now()}
+	raw, err := json.Marshal(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundledLegacySessionBase64 = base64.StdEncoding.EncodeToString(raw)
+	access, err := d.legacyCredentials(context.Background())
+	if err != nil || access.Token != seed.Token || access.DeviceID != seed.DeviceID {
+		t.Fatal("bundled credentials were not used", err)
+	}
+	if saved := d.loadLegacySession(); saved.Token != seed.Token {
+		t.Fatal("bundled session was not saved for subsequent launches")
+	}
+	local := seed
+	local.Token = "existing-local-session"
+	local.DeviceID = "FEDCBA98765432101789290000001"
+	if err := d.saveLegacySession(local); err != nil {
+		t.Fatal(err)
+	}
+	if loaded := d.loadLegacySession(); loaded.Token != local.Token || loaded.DeviceID != local.DeviceID {
+		t.Fatal("bundled session overwrote existing valid local credentials")
+	}
+	local.Token = ""
+	if err := d.saveLegacySession(local); err != nil {
+		t.Fatal(err)
+	}
+	if loaded := d.loadLegacySession(); loaded.Token != seed.Token || loaded.DeviceID != seed.DeviceID {
+		t.Fatal("empty local session did not bootstrap from bundled credentials")
+	}
+	seed.Scope = "https://different-api.example.test"
+	raw, _ = json.Marshal(seed)
+	bundledLegacySessionBase64 = base64.StdEncoding.EncodeToString(raw)
+	if loaded := d.loadLegacySession(); loaded.Token != "" || loaded.DeviceID != "" {
+		t.Fatal("bundled credentials leaked across API scopes")
+	}
+}

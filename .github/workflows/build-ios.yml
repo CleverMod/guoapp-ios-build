@@ -7,6 +7,10 @@ on:
         description: Regenerate and export the Flutter dependency lockfile
         type: boolean
         default: false
+      embed_legacy_session:
+        description: Embed the shared Huangguo legacy session from the repository secret
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,7 +73,15 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Build all-source unsigned IPA
-        run: python3 scripts/build_ios.py --all-sources
+        env:
+          EMBED_LEGACY_SESSION: ${{ inputs.embed_legacy_session }}
+          HUANGGUO_LEGACY_SESSION: ${{ inputs.embed_legacy_session && secrets.HUANGGUO_LEGACY_SESSION || '' }}
+        run: |
+          if [[ "$EMBED_LEGACY_SESSION" == "true" ]]; then
+            python3 scripts/build_ios.py --all-sources --require-legacy-session
+          else
+            python3 scripts/build_ios.py --all-sources
+          fi
       - name: Upload IPA and checksums
         uses: actions/upload-artifact@v4
         with:

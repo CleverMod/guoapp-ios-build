@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,8 @@ import (
 	"sync"
 	"time"
 )
+
+var bundledLegacySessionBase64 = ""
 
 type legacyProtocol struct {
 	InterfaceKey string `json:"interfaceKey"`
@@ -110,19 +114,39 @@ func (d *Downloader) legacySessionScope() string {
 }
 
 func (d *Downloader) loadLegacySession() legacySessionState {
-	empty := legacySessionState{Version: 1, Scope: d.legacySessionScope()}
+	initial := d.bundledLegacySession()
 	file, err := os.Open(filepath.Join(d.cfg.dataDir, "huangguo-session.json"))
 	if err != nil {
-		return empty
+		return initial
 	}
 	defer file.Close()
 	var state legacySessionState
-	if json.NewDecoder(io.LimitReader(file, 16*1024)).Decode(&state) != nil || state.Version != 1 || state.Scope != empty.Scope ||
+	if json.NewDecoder(io.LimitReader(file, 16*1024)).Decode(&state) != nil || state.Version != 1 || state.Scope != initial.Scope ||
 		!regexp.MustCompile(`^[A-Fa-f0-9]{16}[0-9]{13}$`).MatchString(state.DeviceID) || !validLegacyToken(state.Token) {
-		return empty
+		return initial
 	}
 	if state.Token == "" {
+		if initial.Token != "" {
+			return initial
+		}
 		state.DeviceID = ""
+	}
+	return state
+}
+
+func (d *Downloader) bundledLegacySession() legacySessionState {
+	empty := legacySessionState{Version: 1, Scope: d.legacySessionScope()}
+	if len(bundledLegacySessionBase64) == 0 || len(bundledLegacySessionBase64) > 24*1024 {
+		return empty
+	}
+	raw, err := base64.StdEncoding.DecodeString(bundledLegacySessionBase64)
+	if err != nil || len(raw) > 16*1024 {
+		return empty
+	}
+	var state legacySessionState
+	if json.NewDecoder(bytes.NewReader(raw)).Decode(&state) != nil || state.Version != 1 || state.Scope != empty.Scope ||
+		!regexp.MustCompile(`^[A-Fa-f0-9]{16}[0-9]{13}$`).MatchString(state.DeviceID) || state.Token == "" || !validLegacyToken(state.Token) {
+		return empty
 	}
 	return state
 }

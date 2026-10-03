@@ -1,5 +1,7 @@
 import argparse
+import base64
 import hashlib
+import json
 import os
 import platform
 import re
@@ -8,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from app_build import BuildVariant, add_variant_argument
@@ -19,7 +22,44 @@ def run(arguments, **kwargs):
     subprocess.run(arguments, cwd=kwargs.pop('cwd', root), check=True, **kwargs)
 
 
-def build_core(simulator=False, variant=BuildVariant()):
+def legacy_session_flags(path=None, required=False):
+    raw = path.expanduser().read_bytes() if path else os.environ.get('HUANGGUO_LEGACY_SESSION', '').encode('utf-8')
+    if not raw:
+        if required:
+            raise SystemExit('缺少黄果旧版会话，请提供 --legacy-session 或 HUANGGUO_LEGACY_SESSION。')
+        return ''
+    if len(raw) > 16 * 1024:
+        raise SystemExit('黄果旧版会话超过 16 KiB。')
+    try:
+        state = json.loads(raw)
+        if not isinstance(state, dict):
+            raise ValueError('invalid session object')
+        valid = (
+            state.get('version') == 1
+            and state.get('scope') == 'https://dr6skssi3nxbk.cloudfront.net'
+            and isinstance(state.get('deviceId'), str)
+            and re.fullmatch(r'[A-Fa-f0-9]{16}[0-9]{13}', state['deviceId'])
+            and isinstance(state.get('token'), str) and 0 < len(state['token']) <= 4096
+            and not any(char in state['token'] for char in '\r\n\t ')
+        )
+        protocol = state.get('protocol', {})
+        valid = valid and isinstance(protocol, dict) and all(
+            isinstance(protocol.get(key, ''), str) for key in ('interfaceKey', 'paramKey', 'paramIV')
+        )
+        if 'updatedAt' in state:
+            updated = datetime.fromisoformat(state['updatedAt'])
+            valid = valid and updated.tzinfo is not None
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise SystemExit('黄果旧版会话格式无效，需要有效令牌、设备标识及正确接口范围。')
+    state = {key: state[key] for key in ('version', 'scope', 'deviceId', 'token', 'protocol', 'updatedAt') if key in state}
+    raw = json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    encoded = base64.b64encode(raw).decode('ascii')
+    return ' -X duanjuapp/native/core.bundledLegacySessionBase64=' + encoded
+
+
+def build_core(simulator=False, variant=BuildVariant(), session_flags=''):
     if platform.system() != 'Darwin':
         raise SystemExit('iOS 构建需要 macOS 和完整 Xcode。')
     go = shutil.which('go')
@@ -49,8 +89,13 @@ def build_core(simulator=False, variant=BuildVariant()):
             'GOOS': 'ios', 'GOARCH': architecture, 'CC': compiler,
             'CGO_CFLAGS': flags, 'CGO_LDFLAGS': flags,
         }
-        run([go, 'build', '-trimpath', '-buildmode=c-archive', '-ldflags=' + variant.linker_flags,
-             '-o', str(output), './bridge'], cwd=root / 'native', env=build_env)
+        try:
+            run([go, 'build', '-trimpath', '-buildmode=c-archive', '-ldflags=' + variant.linker_flags + session_flags,
+                 '-o', str(output), './bridge'], cwd=root / 'native', env=build_env)
+        except subprocess.CalledProcessError as error:
+            if session_flags:
+                raise SystemExit(f'iOS 核心编译失败，退出码 {error.returncode}；构建参数中的会话已隐藏。') from None
+            raise
         shutil.copy2(output.with_suffix('.h'), headers / 'DuanjuCore.h')
         libraries.append((sdk, output, headers))
     arguments = ['xcodebuild', '-create-xcframework']
@@ -73,10 +118,16 @@ def main():
     parser.add_argument('--core-only', action='store_true')
     parser.add_argument('--simulator', action='store_true', help='额外生成模拟器核心；不启动模拟器')
     parser.add_argument('--export-options', type=Path, help='使用自己的 Xcode 签名配置导出 IPA')
+    parser.add_argument('--legacy-session', type=Path, help='将指定的黄果旧版会话内置到 IPA；不要提交会话文件')
+    parser.add_argument('--require-legacy-session', action='store_true', help='没有有效黄果旧版会话时停止构建')
     add_variant_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)
-    build_core(options.simulator, variant)
+    session_flags = legacy_session_flags(options.legacy_session, options.require_legacy_session)
+    if session_flags and not options.all_sources:
+        raise SystemExit('内置黄果旧版会话需要 --all-sources。')
+    print('黄果旧版内置会话：' + ('已提供' if session_flags else '未提供'))
+    build_core(options.simulator, variant, session_flags)
     if options.core_only:
         return
     flutter = shutil.which('flutter')
