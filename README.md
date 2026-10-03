@@ -193,6 +193,8 @@ python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 
 2026-10-04：[对照可播放参考包恢复黄果旧版后的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37135534702)，构建源码 `2e75b2f`，产物 `zhenguojian-0.2.82+89-ios-unsigned.ipa`，30,417,487 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。仅恢复黄果旧版原有登录与成功后保存会话流程，并迁移此前保存的空令牌失败身份；有效会话保留。其余站源、共用网络层、播放代理和播放器保持上一构建源码，本地已有直播开发未纳入本次 IPA。新 IPA 中黄果旧版请求、登录参数、会话初始化和播放解析四个函数的长度及 ARM64 分支与调用序列分别为 4,096、2,480、3,360、1,680 字节，与用户可播放 `0.2.30+36` 参考包一致；空令牌会话迁移为本次额外修改。包内确认已移除固定登录冷却类型与持久化冷却字段。Flutter、MPV 和主要 FFmpeg 库共 10 个二进制与 `0.2.80` 逐字节一致。Go 核心及测试程序编译、依赖锁文件、Dart 格式、iOS 编译、FFI 入口、IPA 包结构、版本、arm64 架构、ZIP 完整性及校验和检查通过；未执行自动化测试、静态分析或真机验收。SHA-256 为 `b66a473c8751ae9e0705ff67bdcaeeb1eed524d937c6c82ef301387b2825eec4`。本地安装包为 `dist/ios/真果鉴-0.2.82.ipa`；保持开发快照，尚未确认用户 iPhone 上首次 API `4007` 的根因或实际播放恢复。
 
+2026-10-04：[纳入电视直播及共享会话加载支持后的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37138861319)，构建源码 `2346242`，产物 `zhenguojian-0.2.83+90-ios-unsigned.ipa`，30,481,060 字节，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。电视直播入口、63 个频道配置、独立直播播放器及原生取流已纳入包中；包内确认包含黄果共享会话加载函数，但本次构建没有提供真实会话，内置会话变量为空，尚未完成用户要求的通用令牌 IPA。用户手机旧版会话尚未取得，也未收到使用本机独立访客会话的选择。现有本地黄果有效会话继续优先使用，适合保留数据覆盖升级；全新安装仍需要首次登录。依赖锁文件、Dart 格式、Go 核心及测试程序编译、iOS 构建、FFI 入口、IPA 包结构、版本、arm64 架构、ZIP 完整性及校验和检查通过。Flutter、MPV 和主要 FFmpeg 库共 10 个二进制与 `0.2.82` 一致，黄果旧版请求、会话初始化及播放解析函数长度和分支与调用序列保持一致。SHA-256 为 `d87bd63b75a012212b116839c0e10df58e767323cce5dcb625ce96416b850dd0`，本地包为 `dist/ios/真果鉴-0.2.83-电视直播版.ipa`。未执行自动化测试；电视直播、新版真机播放和内置会话初始化尚未验收。
+
 产物在 `dist/android`、`dist/windows`、`dist/ios`，红果版以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。
 
 首次 Android 调试先编译对应架构核心，再运行：
