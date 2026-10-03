@@ -217,83 +217,65 @@ func TestLegacyPublicProtocolValidation(t *testing.T) {
 	}
 }
 
-func TestLegacyLoginRateLimitPersistsAcrossRestart(t *testing.T) {
-	var logins atomic.Int32
-	limited := true
-	var deviceAgent string
-	transport := sourceFixtureTransport(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/api/app/mine/login/h5" {
-			t.Fatal("unexpected request", request.URL.Path)
-		}
-		logins.Add(1)
-		legacyFixtureLogin(t, request)
-		if deviceAgent == "" {
-			deviceAgent = request.Header.Get("X-User-Agent")
-		} else if deviceAgent != request.Header.Get("X-User-Agent") {
-			t.Error("retry changed the visitor identity")
-		}
-		if limited {
-			return sourceFixtureResponse(request, 200, `{"code":4007,"msg":"login too frequently"}`), nil
-		}
-		return legacyFixtureResponse(request, map[string]string{"token": "recovered-session"}), nil
-	})
-	d := legacyFixtureDownloader(t, transport)
-	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
-	_, err := d.legacyCredentials(context.Background())
-	var backoff *legacyLoginCooldown
-	if !errors.As(err, &backoff) || time.Until(backoff.until) < 4*time.Minute {
-		t.Fatal("rate limit did not start a login cooldown", err)
-	}
-	var sharedBackoff *requestBackoff
-	if !errors.As(err, &sharedBackoff) || sharedBackoff.host != sourceCloudFront || !sharedBackoff.until.Equal(backoff.until) {
-		t.Fatal("login cooldown lost the source retry metadata", err)
-	}
-	state := d.loadLegacySession()
-	if state.DeviceID == "" || state.LoginRetryAt.IsZero() || state.Token != "" {
-		t.Fatal("failed login lost its identity or cooldown")
-	}
-	if _, err := d.legacyCredentials(context.Background()); !errors.As(err, &backoff) {
-		t.Fatal("cached cooldown was not returned", err)
-	}
-	restarted := legacyFixtureDownloader(t, transport)
-	restarted.cfg = d.cfg
-	if _, err := restarted.legacyCredentials(context.Background()); !errors.As(err, &backoff) || logins.Load() != 1 {
-		t.Fatal("restart issued another login during cooldown", err)
-	}
-	state.LoginRetryAt = time.Now().Add(-time.Second)
-	if err := d.saveLegacySession(state); err != nil {
-		t.Fatal(err)
-	}
-	limited = false
-	recovered := legacyFixtureDownloader(t, transport)
-	recovered.cfg = d.cfg
-	access, err := recovered.legacyCredentials(context.Background())
-	if err != nil || access.Token != "recovered-session" || access.DeviceID != state.DeviceID || logins.Load() != 2 {
-		t.Fatal("login did not recover using the saved identity", err)
-	}
-	if !recovered.loadLegacySession().LoginRetryAt.IsZero() {
-		t.Fatal("successful login retained its cooldown")
-	}
-}
-
-func TestLegacyLoginTransportFailureDoesNotResend(t *testing.T) {
+func TestLegacyFailedLoginDoesNotPersistSession(t *testing.T) {
 	var logins atomic.Int32
 	d := legacyFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
 		if request.URL.Path != "/api/app/mine/login/h5" {
 			t.Fatal("unexpected request", request.URL.Path)
 		}
 		logins.Add(1)
-		return nil, errors.New("synthetic response lost after login")
+		legacyFixtureLogin(t, request)
+		return sourceFixtureResponse(request, 200, `{"code":4007,"msg":"login too frequently"}`), nil
 	})
 	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
-	d.cfg.Retries = 3
 	_, err := d.legacyCredentials(context.Background())
-	var backoff *legacyLoginCooldown
-	if !errors.As(err, &backoff) || logins.Load() != 1 {
-		t.Fatal("ambiguous login failure resent the login", err, logins.Load())
+	var apiErr *legacyAPIError
+	if !errors.As(err, &apiErr) || apiErr.code != "4007" || logins.Load() != 1 {
+		t.Fatal("login error was replaced or retried", err, logins.Load())
 	}
-	state := d.loadLegacySession()
-	if state.DeviceID == "" || !time.Now().Before(state.LoginRetryAt) {
-		t.Fatal("ambiguous login failure lost its retry state")
+	if _, err := os.Stat(filepath.Join(d.cfg.dataDir, "huangguo-session.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("unsuccessful login was persisted", err)
+	}
+	if _, err := d.legacyCredentials(context.Background()); !errors.As(err, &apiErr) || logins.Load() != 1 {
+		t.Fatal("in-memory retry protection did not retain the original error", err)
+	}
+}
+
+func TestLegacyFailedLoginSnapshotMigrationPreservesValidSessions(t *testing.T) {
+	for _, token := range []string{"", "saved-valid-session"} {
+		t.Run(token, func(t *testing.T) {
+			d := legacyFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
+				t.Fatal("session migration sent a request")
+				return nil, errors.New("unexpected request")
+			})
+			state := legacySessionState{Version: 1, Scope: d.legacySessionScope(), DeviceID: "0123456789ABCDEF1789290000000", Token: token, Protocol: fixtureLegacyProtocol, UpdatedAt: time.Now()}
+			if err := d.saveLegacySession(state); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(d.cfg.dataDir, "huangguo-session.json")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]any
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			fields["loginRetryAt"] = time.Now().Add(-time.Minute)
+			raw, err = json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			loaded := d.loadLegacySession()
+			if loaded.Token != token || loaded.Protocol != fixtureLegacyProtocol || loaded.Scope != state.Scope {
+				t.Fatal("session migration lost valid credentials or protocol")
+			}
+			if token == "" && loaded.DeviceID != "" || token != "" && loaded.DeviceID != state.DeviceID {
+				t.Fatal("session migration reused a failed identity or discarded a valid one")
+			}
+		})
 	}
 }

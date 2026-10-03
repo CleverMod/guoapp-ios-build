@@ -23,27 +23,12 @@ type legacyProtocol struct {
 }
 
 type legacySessionState struct {
-	Version      int            `json:"version"`
-	Scope        string         `json:"scope"`
-	DeviceID     string         `json:"deviceId"`
-	Token        string         `json:"token"`
-	Protocol     legacyProtocol `json:"protocol"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
-	LoginRetryAt time.Time      `json:"loginRetryAt,omitempty"`
-}
-
-type legacyLoginCooldown struct {
-	until  time.Time
-	reason string
-}
-
-func (cooldown *legacyLoginCooldown) Error() string {
-	seconds := max(1, int(time.Until(cooldown.until).Seconds()+0.999))
-	return fmt.Sprintf("%s，请在 %d 秒后重试", cooldown.reason, seconds)
-}
-
-func (cooldown *legacyLoginCooldown) Unwrap() error {
-	return &requestBackoff{host: sourceCloudFront, until: cooldown.until, reason: cooldown.reason}
+	Version   int            `json:"version"`
+	Scope     string         `json:"scope"`
+	DeviceID  string         `json:"deviceId"`
+	Token     string         `json:"token"`
+	Protocol  legacyProtocol `json:"protocol"`
+	UpdatedAt time.Time      `json:"updatedAt"`
 }
 
 type legacyAccess struct {
@@ -112,10 +97,6 @@ func (d *Downloader) legacyCredentials(ctx context.Context) (legacyAccess, error
 			client.access = &access
 		} else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			client.retryAt = time.Now().Add(time.Minute)
-			var cooldown *legacyLoginCooldown
-			if errors.As(err, &cooldown) {
-				client.retryAt = cooldown.until
-			}
 		}
 		client.pending = nil
 		close(pending)
@@ -139,6 +120,9 @@ func (d *Downloader) loadLegacySession() legacySessionState {
 	if json.NewDecoder(io.LimitReader(file, 16*1024)).Decode(&state) != nil || state.Version != 1 || state.Scope != empty.Scope ||
 		!regexp.MustCompile(`^[A-Fa-f0-9]{16}[0-9]{13}$`).MatchString(state.DeviceID) || !validLegacyToken(state.Token) {
 		return empty
+	}
+	if state.Token == "" {
+		state.DeviceID = ""
 	}
 	return state
 }
@@ -200,45 +184,19 @@ func (d *Downloader) bootstrapLegacySession(ctx context.Context, state legacySes
 		}
 		access.DeviceID, access.Token = state.DeviceID, state.Token
 		if access.Token == "" {
-			if time.Now().Before(state.LoginRetryAt) {
-				return access, state, &legacyLoginCooldown{until: state.LoginRetryAt,
-					reason: "黄果旧版访客登录冷却中，请勿连续更新或检测"}
-			}
-			state.LoginRetryAt = time.Now().Add(time.Minute)
-			if err := d.saveLegacySession(state); err != nil {
-				return access, state, fmt.Errorf("保存黄果访客登录状态失败: %w", err)
-			}
 			payload, err := d.legacyRequest(ctx, http.MethodPost, "/api/app/mine/login/h5", map[string]any{
 				"devID": access.DeviceID, "sysType": "ios", "isAppStore": false,
 			}, access)
 			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return access, state, fmt.Errorf("黄果访客登录未完成: %w", err)
-				}
-				reason := "黄果访客登录未完成: " + publicError(err).Error()
-				var apiErr *legacyAPIError
-				if errors.As(err, &apiErr) && apiErr.code == "4007" {
-					state.LoginRetryAt = time.Now().Add(5 * time.Minute)
-					reason = "黄果旧版访客登录过于频繁（API 4007），已暂停登录请求"
-				}
-				var backoff *requestBackoff
-				if errors.As(err, &backoff) && backoff.until.After(state.LoginRetryAt) {
-					state.LoginRetryAt = backoff.until
-				}
-				if saveErr := d.saveLegacySession(state); saveErr != nil {
-					fmt.Println("黄果访客登录冷却未能保存，本次冷却仍生效")
-				}
-				return access, state, &legacyLoginCooldown{until: state.LoginRetryAt, reason: reason}
+				return access, state, fmt.Errorf("黄果访客登录失败: %w", err)
 			}
 			var login struct {
 				Token string `json:"token"`
 			}
 			if json.Unmarshal(payload, &login) != nil || login.Token == "" || !validLegacyToken(login.Token) {
-				return access, state, &legacyLoginCooldown{until: state.LoginRetryAt,
-					reason: "黄果访客登录未返回有效令牌，已暂停重复登录"}
+				return access, state, errors.New("黄果访客登录未返回有效令牌")
 			}
 			access.Token, state.Token = login.Token, login.Token
-			state.LoginRetryAt = time.Time{}
 		}
 	}
 	if access.Anonymous {
@@ -277,9 +235,6 @@ func (d *Downloader) invalidateLegacyToken(access legacyAccess) {
 		client.state.Token = ""
 		client.access = nil
 		client.err = nil
-		if err := d.saveLegacySession(client.state); err != nil {
-			fmt.Println("黄果失效会话未能保存，本次会话已清除")
-		}
 	}
 }
 
