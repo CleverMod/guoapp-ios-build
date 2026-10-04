@@ -26,16 +26,13 @@ type yspChannel struct {
 	Backup     bool   `json:"-"`
 }
 type yspSegment struct {
-	key, address string
-	tags         []string
-	duration     float64
-	sequence     int64
+	key, address  string
+	tags          []string
+	duration      float64
+	sequence      int64
+	discontinuity int64
 }
-type yspLiveSession struct {
-	mu        sync.Mutex
-	channel   yspChannel
-	ctx       context.Context
-	cancel    context.CancelFunc
+type yspLiveState struct {
 	mode      string
 	urls      []string
 	urlTime   time.Time
@@ -44,8 +41,18 @@ type yspLiveSession struct {
 	attempted time.Time
 	segments  []yspSegment
 	sequence  int64
-	lastUsed  time.Time
+	target    float64
+	failures  int
 	errorText string
+}
+type yspLiveSession struct {
+	mu        sync.Mutex
+	refreshMu sync.Mutex
+	channel   yspChannel
+	ctx       context.Context
+	cancel    context.CancelFunc
+	lastUsed  time.Time
+	yspLiveState
 }
 type yspLiveServer struct {
 	mu       sync.Mutex
@@ -140,7 +147,7 @@ func (live *yspLiveServer) open(ctx context.Context, slug string) (nativePlan, e
 	if channel.Backup {
 		mode = "bk"
 	}
-	s := &yspLiveSession{channel: channel, ctx: life, cancel: cancel, mode: mode, lastUsed: time.Now()}
+	s := &yspLiveSession{channel: channel, ctx: life, cancel: cancel, yspLiveState: yspLiveState{mode: mode}, lastUsed: time.Now()}
 	live.mu.Lock()
 	if len(live.sessions) >= 4 {
 		live.mu.Unlock()
@@ -157,9 +164,7 @@ func (live *yspLiveServer) open(ctx context.Context, slug string) (nativePlan, e
 	live.mu.Unlock()
 	fetch, stop := context.WithCancel(ctx)
 	detach := context.AfterFunc(life, stop)
-	s.mu.Lock()
 	err = live.refresh(fetch, s)
-	s.mu.Unlock()
 	detach()
 	stop()
 	if err != nil {
@@ -169,6 +174,7 @@ func (live *yspLiveServer) open(ctx context.Context, slug string) (nativePlan, e
 	live.mu.Lock()
 	s.lastUsed = time.Now()
 	live.mu.Unlock()
+	go live.keepFresh(s)
 	return nativePlan{URL: address + "/live/" + token + "/index.m3u8", Session: token, Quality: 1080, Qualities: []int{1080}, Headers: map[string]string{"User-Agent": yspUA, "Referer": "https://live.cctv.cn/"}, RouteCount: 1}, nil
 }
 func (live *yspLiveServer) release(token string) {
@@ -246,9 +252,14 @@ func yspParseSegments(text string) []yspSegment {
 	tags := []string{}
 	keyTag, mapTag, pdt, byteRange := "", "", "", ""
 	duration := 6.0
+	sequence := int64(0)
+	rangeOffset := int64(0)
+	rangeResource := ""
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
+		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
+			sequence, _ = strconv.ParseInt(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"), 10, 64)
 		case strings.HasPrefix(line, "#EXT-X-KEY:"):
 			keyTag = line
 		case strings.HasPrefix(line, "#EXT-X-MAP:"):
@@ -264,8 +275,7 @@ func yspParseSegments(text string) []yspSegment {
 			tags = append(tags, line)
 		case strings.HasPrefix(line, "#EXT-X-BYTERANGE:"):
 			byteRange = line
-			tags = append(tags, line)
-		case line == "#EXT-X-DISCONTINUITY":
+		case line == "#EXT-X-DISCONTINUITY" || line == "#EXT-X-GAP":
 			tags = append(tags, line)
 		case line != "" && !strings.HasPrefix(line, "#"):
 			identity := line
@@ -274,19 +284,45 @@ func yspParseSegments(text string) []yspSegment {
 				u.Fragment = ""
 				identity = u.String()
 			}
+			if byteRange != "" {
+				parts := strings.SplitN(strings.TrimPrefix(byteRange, "#EXT-X-BYTERANGE:"), "@", 2)
+				length, _ := strconv.ParseInt(parts[0], 10, 64)
+				offset := rangeOffset
+				if len(parts) == 2 {
+					offset, _ = strconv.ParseInt(parts[1], 10, 64)
+				} else if rangeResource != identity {
+					offset = 0
+				}
+				if length > 0 && offset >= 0 {
+					byteRange = fmt.Sprintf("#EXT-X-BYTERANGE:%d@%d", length, offset)
+					rangeOffset = offset + length
+					rangeResource = identity
+				}
+				tags = append(tags, byteRange)
+			} else {
+				rangeResource = ""
+				rangeOffset = 0
+			}
 			if pdt != "" {
 				identity = "pdt:" + pdt
 			}
 			identity += byteRange
 			prefix := []string{}
 			if keyTag != "" {
-				prefix = append(prefix, keyTag)
+				key := keyTag
+				if strings.Contains(key, "METHOD=AES-128") && !strings.Contains(key, "IV=") {
+					key += fmt.Sprintf(",IV=0x%032x", sequence)
+				}
+				prefix = append(prefix, key)
+			} else {
+				prefix = append(prefix, "#EXT-X-KEY:METHOD=NONE")
 			}
 			if mapTag != "" {
 				prefix = append(prefix, mapTag)
 			}
 			prefix = append(prefix, tags...)
 			segments = append(segments, yspSegment{key: identity, address: line, tags: prefix, duration: duration})
+			sequence++
 			tags = nil
 			pdt = ""
 			byteRange = ""
@@ -294,39 +330,91 @@ func yspParseSegments(text string) []yspSegment {
 	}
 	return segments
 }
-func yspMergePlaylist(s *yspLiveSession, text string) error {
+func yspMergePlaylist(s *yspLiveState, text string, changedRoute bool) error {
 	fresh := yspParseSegments(text)
 	if len(fresh) == 0 {
 		return errors.New("央视频直播清单暂无分片")
+	}
+	target := s.target
+	if target == 0 {
+		target = 6
+		for _, line := range strings.Split(text, "\n") {
+			if strings.HasPrefix(line, "#EXT-X-TARGETDURATION:") {
+				if value, err := strconv.ParseFloat(strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:"), 64); err == nil && value > 0 && !math.IsInf(value, 0) {
+					target = math.Max(target, math.Ceil(value))
+				}
+			}
+		}
+		for _, seg := range fresh {
+			target = math.Max(target, math.Ceil(seg.duration))
+		}
+	} else {
+		for _, seg := range fresh {
+			if math.Round(seg.duration) > target {
+				return errors.New("央视频直播分片时长发生变化，请重新取流")
+			}
+		}
 	}
 	positions := map[string]int{}
 	for i, seg := range s.segments {
 		positions[seg.key] = i
 	}
-	for _, seg := range fresh {
-		if i, ok := positions[seg.key]; ok {
+	overlap := -1
+	for index, seg := range fresh {
+		if i, ok := positions[seg.key]; ok && !changedRoute {
+			overlap = index
 			seg.sequence = s.segments[i].sequence
+			seg.discontinuity = s.segments[i].discontinuity
+			tags := []string{}
+			for _, tag := range seg.tags {
+				if tag != "#EXT-X-DISCONTINUITY" {
+					tags = append(tags, tag)
+				}
+			}
+			seg.tags = tags
+			for _, tag := range s.segments[i].tags {
+				if tag == "#EXT-X-DISCONTINUITY" && !yspHasDiscontinuity(seg) {
+					seg.tags = append([]string{tag}, seg.tags...)
+				}
+			}
 			s.segments[i] = seg
-		} else {
-			s.sequence++
-			seg.sequence = s.sequence
-			positions[seg.key] = len(s.segments)
-			s.segments = append(s.segments, seg)
 		}
+	}
+	appendFrom := overlap + 1
+	if len(s.segments) > 0 && (changedRoute || overlap < 0) {
+		if len(fresh)-appendFrom > 3 {
+			appendFrom = len(fresh) - 3
+		}
+		if appendFrom < len(fresh) && !yspHasDiscontinuity(fresh[appendFrom]) {
+			fresh[appendFrom].tags = append([]string{"#EXT-X-DISCONTINUITY"}, fresh[appendFrom].tags...)
+		}
+	}
+	for _, seg := range fresh[appendFrom:] {
+		s.sequence++
+		seg.sequence = s.sequence
+		if len(s.segments) > 0 {
+			seg.discontinuity = s.segments[len(s.segments)-1].discontinuity
+		}
+		if yspHasDiscontinuity(seg) {
+			seg.discontinuity++
+		}
+		s.segments = append(s.segments, seg)
 	}
 	if len(s.segments) > 60 {
 		s.segments = append([]yspSegment(nil), s.segments[len(s.segments)-60:]...)
 	}
 	window := s.segments
-	if len(window) > 30 {
-		window = window[len(window)-30:]
+	windowSize := min(30, len(fresh))
+	if len(window) > windowSize {
+		window = window[len(window)-windowSize:]
 	}
-	target := 6.0
-	for _, seg := range window {
-		target = math.Max(target, math.Ceil(seg.duration))
+	s.target = target
+	discontinuity := window[0].discontinuity
+	if yspHasDiscontinuity(window[0]) {
+		discontinuity--
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-MEDIA-SEQUENCE:%d\n", target, window[0].sequence)
+	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", target, window[0].sequence, discontinuity)
 	for _, seg := range window {
 		for _, tag := range seg.tags {
 			out.WriteString(tag + "\n")
@@ -336,35 +424,76 @@ func yspMergePlaylist(s *yspLiveSession, text string) error {
 	s.playlist = out.String()
 	return nil
 }
+func yspHasDiscontinuity(segment yspSegment) bool {
+	for _, tag := range segment.tags {
+		if tag == "#EXT-X-DISCONTINUITY" {
+			return true
+		}
+	}
+	return false
+}
 func (live *yspLiveServer) refresh(ctx context.Context, s *yspLiveSession) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	s.mu.Lock()
+	state := s.yspLiveState
+	state.segments = append([]yspSegment(nil), state.segments...)
+	s.mu.Unlock()
+	err := live.refreshState(ctx, s.channel, &state)
+	if s.ctx.Err() == nil {
+		s.mu.Lock()
+		s.yspLiveState = state
+		s.mu.Unlock()
+	}
+	return err
+}
+func (live *yspLiveServer) keepFresh(s *yspLiveSession) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
+			live.refresh(ctx, s)
+			cancel()
+		}
+	}
+}
+func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel, s *yspLiveState) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	s.attempted = time.Now()
 	if s.mode == "jce" {
-		address, err := live.timeshift(ctx, s.channel)
+		address, err := live.timeshift(ctx, channel)
 		if err == nil {
 			var text string
 			text, err = live.playlist(ctx, address, 0)
 			if err == nil {
-				err = yspMergePlaylist(s, text)
+				err = yspMergePlaylist(s, text, false)
 			}
 		}
 		if err == nil {
 			s.refreshed = time.Now()
 			s.errorText = ""
+			s.failures = 0
 			return nil
+		}
+		s.failures++
+		s.errorText = publicError(err).Error()
+		if s.playlist != "" && s.failures < 3 && time.Since(s.refreshed) < 30*time.Second {
+			return err
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		s.mode = "bk"
-		s.segments = nil
 	}
 	var last error
 	for attempt := 0; attempt < 2; attempt++ {
 		if len(s.urls) == 0 || time.Since(s.urlTime) > 10*time.Minute || attempt > 0 {
-			urls, err := live.backupURLs(ctx, s.channel)
+			urls, err := live.backupURLs(ctx, channel)
 			if err != nil {
 				last = err
 				break
@@ -375,10 +504,14 @@ func (live *yspLiveServer) refresh(ctx context.Context, s *yspLiveSession) error
 		for _, address := range s.urls {
 			text, err := live.playlist(ctx, address, 0)
 			if err == nil && len(yspParseSegments(text)) > 0 && !strings.Contains(text, "#EXT-X-ENDLIST") {
-				s.playlist = text
-				s.refreshed = time.Now()
-				s.errorText = ""
-				return nil
+				err = yspMergePlaylist(s, text, s.mode != "bk")
+				if err == nil {
+					s.mode = "bk"
+					s.refreshed = time.Now()
+					s.errorText = ""
+					s.failures = 0
+					return nil
+				}
 			}
 			if err == nil {
 				err = errors.New("央视频备用线路未提供直播分片")
@@ -416,30 +549,20 @@ func (live *yspLiveServer) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "直播已结束", http.StatusGone)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-	defer cancel()
-	stop := context.AfterFunc(s.ctx, cancel)
-	defer stop()
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	playlist, refreshed := s.playlist, s.refreshed
+	s.mu.Unlock()
 	if s.ctx.Err() != nil {
 		http.Error(w, "直播已结束", http.StatusGone)
 		return
 	}
-	interval := 15 * time.Second
-	if s.mode == "bk" {
-		interval = 3 * time.Second
-	}
-	if time.Since(s.refreshed) >= interval && time.Since(s.attempted) >= 3*time.Second {
-		live.refresh(ctx, s)
-	}
-	if s.playlist == "" || time.Since(s.refreshed) > 45*time.Second {
+	if playlist == "" || time.Since(refreshed) > 45*time.Second {
 		http.Error(w, "直播清单刷新失败，请重新取流", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	if r.Method == "GET" {
-		fmt.Fprint(w, s.playlist)
+		fmt.Fprint(w, playlist)
 	}
 }

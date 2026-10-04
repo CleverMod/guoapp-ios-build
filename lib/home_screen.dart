@@ -408,7 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _televisionBack() {
     if (_selectionMode) {
       _cancelSelection();
-    } else if (_tab != 0) {
+    } else if (_currentTab != 0) {
       setState(() => _tab = 0);
     } else if (_search.text.isNotEmpty) {
       _search.clear();
@@ -670,6 +670,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedDramas.clear();
   });
 
+  int get _currentTab =>
+      _tab == 3 && !widget.store.canDownload ||
+          _tab == 4 && (!allSourcesEnabled || widget.store.locked)
+      ? 0
+      : _tab;
+
   void _cancelSelection() => setState(() {
     _selectionMode = false;
     _selectedDramas.clear();
@@ -794,6 +800,50 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final television = AppLayout.isTelevision(context);
         final desktop = constraints.maxWidth >= 840;
+        final navigation = [
+          (
+            tab: 0,
+            icon: Icons.explore_outlined,
+            selectedIcon: Icons.explore,
+            televisionIcon: Icons.explore_rounded,
+            label: '发现',
+          ),
+          (
+            tab: 1,
+            icon: Icons.bookmark_border_rounded,
+            selectedIcon: Icons.bookmark_rounded,
+            televisionIcon: Icons.bookmark_rounded,
+            label: '追剧',
+          ),
+          if (allSourcesEnabled && !widget.store.locked)
+            (
+              tab: 4,
+              icon: Icons.live_tv_rounded,
+              selectedIcon: Icons.live_tv_rounded,
+              televisionIcon: Icons.live_tv_rounded,
+              label: '直播',
+            ),
+          (
+            tab: 2,
+            icon: Icons.history_rounded,
+            selectedIcon: Icons.history_rounded,
+            televisionIcon: Icons.history_rounded,
+            label: '最近观看',
+          ),
+          if (widget.store.canDownload)
+            (
+              tab: 3,
+              icon: Icons.download_outlined,
+              selectedIcon: Icons.download_rounded,
+              televisionIcon: Icons.download_rounded,
+              label: '下载',
+            ),
+        ];
+        final tab = _currentTab;
+        final selectedIndex = navigation.indexWhere(
+          (entry) => entry.tab == tab,
+        );
+        void selectDestination(int index) => _changeTab(navigation[index].tab);
         final scaffold = Scaffold(
           appBar: AppBar(
             toolbarHeight: television ? 64 : null,
@@ -804,7 +854,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   )
-                : _tab == 0
+                : tab == 0
                 ? PopupMenuButton<SourceGroup>(
                     key: const ValueKey('source-switch'),
                     tooltip: '切换站源',
@@ -843,7 +893,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   )
-                : const Text(appName),
+                : Text(tab == 4 ? '直播' : appName),
             actions: [
               if (_selectionMode) ...[
                 TextButton(
@@ -859,29 +909,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text('取消'),
                 ),
               ] else ...[
-                if (allSourcesEnabled && !widget.store.locked)
-                  IconButton(
-                    key: const ValueKey('open-live-tv'),
-                    tooltip: '电视直播',
-                    icon: const Icon(Icons.live_tv_rounded),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => LiveChannelsScreen(
-                          repository: widget.repository,
-                          store: widget.store,
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_tab == 1)
+                if (tab == 1)
                   IconButton(
                     key: const ValueKey('follow-lan-sync'),
                     tooltip: '追剧同步',
                     onPressed: () => openLanSync(context),
                     icon: const Icon(Icons.sync_rounded),
                   ),
-                if (_tab == 0) ...[
+                if (tab == 0) ...[
                   if (!_showRecommendations)
                     IconButton(
                       tooltip: '排序与筛选 · ${widget.store.catalogView.sort.label}',
@@ -921,7 +956,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: _toggleSearch,
                   ),
                 ],
-                if (_tab == 0 &&
+                if (tab == 0 &&
                     !_showRecommendations &&
                     constraints.maxWidth >= 400)
                   RefreshAction(
@@ -981,7 +1016,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                   },
                   itemBuilder: (_) => [
-                    if (_tab == 0 &&
+                    if (tab == 0 &&
                         !_showRecommendations &&
                         constraints.maxWidth < 400)
                       PopupMenuItem(
@@ -1026,22 +1061,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (final entry in [
-                            (Icons.explore_rounded, '发现'),
-                            (Icons.bookmark_rounded, '追剧'),
-                            (Icons.history_rounded, '最近观看'),
-                            if (widget.store.canDownload)
-                              (Icons.download_rounded, '下载'),
-                          ].indexed)
+                          for (final entry in navigation)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 14),
                               child: RemoteButton(
-                                key: ValueKey('tv-nav-${entry.$1}'),
-                                label: entry.$2.$2,
-                                icon: entry.$2.$1,
-                                selected: _tab == entry.$1,
-                                autofocus: entry.$1 == 0,
-                                onPressed: () => _changeTab(entry.$1),
+                                key: ValueKey('tv-nav-${entry.tab}'),
+                                label: entry.label,
+                                icon: entry.televisionIcon,
+                                selected: tab == entry.tab,
+                                autofocus: entry.tab == 0,
+                                onPressed: () => _changeTab(entry.tab),
                               ),
                             ),
                         ],
@@ -1051,54 +1080,49 @@ class _HomeScreenState extends State<HomeScreen> {
                   const VerticalDivider(width: 1),
                 ] else if (desktop) ...[
                   NavigationRail(
-                    selectedIndex: _tab,
-                    onDestinationSelected: _changeTab,
+                    selectedIndex: selectedIndex,
+                    onDestinationSelected: selectDestination,
                     labelType: NavigationRailLabelType.all,
                     groupAlignment: -.8,
                     destinations: [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.explore_outlined),
-                        selectedIcon: Icon(Icons.explore),
-                        label: Text('发现'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.bookmark_border_rounded),
-                        selectedIcon: Icon(Icons.bookmark_rounded),
-                        label: Text('追剧'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.history_rounded),
-                        label: Text('最近观看'),
-                      ),
-                      if (widget.store.canDownload)
+                      for (final entry in navigation)
                         NavigationRailDestination(
-                          icon: Icon(Icons.download_outlined),
-                          selectedIcon: Icon(Icons.download_rounded),
-                          label: Text('下载'),
+                          icon: Icon(entry.icon),
+                          selectedIcon: Icon(entry.selectedIcon),
+                          label: Text(entry.label),
                         ),
                     ],
                   ),
                   const VerticalDivider(width: 1, thickness: 1),
                 ],
                 Expanded(
-                  child: _tab == 0
+                  child: tab == 0
                       ? widget.store.sources.isEmpty
                             ? const StatusPanel(
                                 title: '暂无可用站源',
                                 message: '请联系管理员为当前用户开放站源。',
                               )
                             : _catalog(selectionInBody: desktop || television)
-                      : _tab == 3
+                      : tab == 4
+                      ? LiveChannelsScreen(
+                          key: ValueKey(
+                            'live-tab-${widget.store.profileEpoch}',
+                          ),
+                          repository: widget.repository,
+                          store: widget.store,
+                          embedded: true,
+                        )
+                      : tab == 3
                       ? DownloadsScreen(
                           repository: widget.repository,
                           store: widget.store,
                           embedded: true,
                         )
                       : SavedLibrary(
-                          key: ValueKey('saved-tab-$_tab'),
+                          key: ValueKey('saved-tab-$tab'),
                           repository: widget.repository,
                           store: widget.store,
-                          history: _tab == 2,
+                          history: tab == 2,
                           onOpen: _openDrama,
                           onContinue: (drama) =>
                               _openDrama(drama, resume: true),
@@ -1117,28 +1141,14 @@ class _HomeScreenState extends State<HomeScreen> {
               : _selectionMode
               ? _selectionBar()
               : AppBottomNavigation(
-                  selectedIndex: _tab,
-                  onDestinationSelected: _changeTab,
+                  selectedIndex: selectedIndex,
+                  onDestinationSelected: selectDestination,
                   destinations: [
-                    NavigationDestination(
-                      icon: Icon(Icons.explore_outlined),
-                      selectedIcon: Icon(Icons.explore),
-                      label: '发现',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.bookmark_border_rounded),
-                      selectedIcon: Icon(Icons.bookmark_rounded),
-                      label: '追剧',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.history_rounded),
-                      label: '最近观看',
-                    ),
-                    if (widget.store.canDownload)
+                    for (final entry in navigation)
                       NavigationDestination(
-                        icon: Icon(Icons.download_outlined),
-                        selectedIcon: Icon(Icons.download_rounded),
-                        label: '下载',
+                        icon: Icon(entry.icon),
+                        selectedIcon: Icon(entry.selectedIcon),
+                        label: entry.label,
                       ),
                   ],
                 ),
@@ -1147,7 +1157,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return PopScope(
           canPop:
               !_selectionMode &&
-              (!television || _tab == 0 && _search.text.isEmpty),
+              (!television || tab == 0 && _search.text.isEmpty),
           onPopInvokedWithResult: (didPop, result) {
             if (!didPop) _televisionBack();
           },

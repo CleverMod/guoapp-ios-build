@@ -12,10 +12,12 @@ class LiveChannelsScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.store,
+    this.embedded = false,
   });
 
   final AppRepository repository;
   final LocalStore store;
+  final bool embedded;
 
   @override
   State<LiveChannelsScreen> createState() => _LiveChannelsScreenState();
@@ -82,8 +84,9 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
         )
         .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('电视直播 · 央视频')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('电视直播 · 央视频')),
       body: SafeArea(
+        top: !widget.embedded,
         child: !allowed
             ? const Center(child: Text('当前用户已变更，请返回后重新打开直播'))
             : _loading

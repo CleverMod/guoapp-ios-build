@@ -22,12 +22,18 @@ class LivePlayerScreen extends StatefulWidget {
     required this.store,
     required this.channels,
     required this.initialChannel,
+    this.playerFactory,
+    this.videoBuilder,
   });
 
   final AppRepository repository;
   final LocalStore store;
   final List<LiveChannel> channels;
   final LiveChannel initialChannel;
+  @visibleForTesting
+  final Player Function()? playerFactory;
+  @visibleForTesting
+  final Widget Function(Widget controls)? videoBuilder;
 
   @override
   State<LivePlayerScreen> createState() => _LivePlayerScreenState();
@@ -42,13 +48,19 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   final _subscriptions = <StreamSubscription<dynamic>>[];
   AppOrientationController? _orientation;
   LivePlayback? _playback;
+  String? _playingChannel;
   Future<void> _operations = Future<void>.value();
   Timer? _healthTimer;
   Timer? _retryTimer;
+  Timer? _errorTimer;
+  Timer? _controlsTimer;
+  final _surfaceFocus = FocusNode();
+  final _playFocus = FocusNode();
   DateTime _lastProgress = DateTime.now();
   Duration _lastPosition = Duration.zero;
   int _generation = 0;
   int _retries = 0;
+  Duration _healthyPlayback = Duration.zero;
   bool _closed = false;
   bool _loading = true;
   bool _acceptErrors = false;
@@ -56,6 +68,9 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   bool _playIntent = true;
   bool _fullscreen = false;
   bool _channelPicker = false;
+  bool _volumePicker = false;
+  bool _controlsVisible = true;
+  bool _recovering = false;
   double _volume = 100;
   bool _volumeReady = !AppDevice.supportsMediaVolume;
   bool _settingVolume = false;
@@ -70,15 +85,17 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     super.initState();
     _epoch = widget.store.profileEpoch;
     _channel = widget.initialChannel;
-    _player = Platform.isAndroid
-        ? LunaExoPlayer()
-        : Player(
-            configuration: const PlayerConfiguration(
-              bufferSize: 16 * 1024 * 1024,
-              logLevel: MPVLogLevel.warn,
-            ),
-          );
-    if (!Platform.isAndroid) {
+    _player =
+        widget.playerFactory?.call() ??
+        (Platform.isAndroid
+            ? LunaExoPlayer()
+            : Player(
+                configuration: const PlayerConfiguration(
+                  bufferSize: 16 * 1024 * 1024,
+                  logLevel: MPVLogLevel.warn,
+                ),
+              ));
+    if (widget.videoBuilder == null && !Platform.isAndroid) {
       _video = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
@@ -91,15 +108,38 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     _subscriptions.add(
       _player.stream.error.listen((error) {
         if (_acceptErrors && !_closed && error.isNotEmpty) {
-          _recover('直播播放出错，请重新取流');
+          DiaryService.add('[Live] 频道 ${_channel.id} 播放器报告: $error');
+          _queueRecovery('直播暂时无法播放，请重新取流');
         }
       }),
     );
     _subscriptions.add(
       _player.stream.position.listen((position) {
+        if (_closed) return;
         if (position != _lastPosition) {
+          final advance = position - _lastPosition;
           _lastPosition = position;
           _lastProgress = DateTime.now();
+          if (!_loading &&
+              _foreground &&
+              _playIntent &&
+              _playingChannel == _channel.id &&
+              advance > Duration.zero &&
+              advance <= const Duration(seconds: 10)) {
+            _errorTimer?.cancel();
+            if (_retryTimer?.isActive == true) {
+              _retryTimer?.cancel();
+              _acceptErrors = true;
+              setState(() => _recovering = false);
+              DiaryService.add('[Live] 频道 ${_channel.id} 已自行恢复，取消重新取流');
+            }
+            _healthyPlayback += advance;
+            if (_retries > 0 &&
+                _healthyPlayback >= const Duration(seconds: 30)) {
+              _retries = 0;
+              DiaryService.add('[Live] 频道 ${_channel.id} 已稳定播放，重置恢复次数');
+            }
+          }
         }
       }),
     );
@@ -109,8 +149,9 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       }),
     );
     _subscriptions.add(
-      _player.stream.playing.listen((_) {
+      _player.stream.playing.listen((playing) {
         if (mounted) setState(() {});
+        if (playing) _scheduleControlsHide();
       }),
     );
     _subscriptions.add(
@@ -138,7 +179,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           _foreground &&
           _allowed &&
           DateTime.now().difference(_lastProgress) >
-              const Duration(seconds: 20)) {
+              const Duration(seconds: 30)) {
         _recover('直播长时间未更新，请重新取流');
       }
     });
@@ -157,6 +198,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       _acceptErrors = false;
       _playIntent = false;
       _retryTimer?.cancel();
+      _errorTimer?.cancel();
       unawaited(_player.pause());
       final playback = _playback;
       _playback = null;
@@ -164,6 +206,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       if (mounted) {
         setState(() {
           _loading = false;
+          _recovering = false;
           _error = '当前用户已变更，请退出直播';
         });
       }
@@ -173,12 +216,19 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_closed) return;
-    _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground) {
+    if (state == AppLifecycleState.inactive) return;
+    if (state == AppLifecycleState.resumed) {
+      final wasForeground = _foreground;
+      _foreground = true;
+      if (!wasForeground && _playIntent && _allowed) _load(_channel);
+    } else {
+      _foreground = false;
+      _generation++;
+      _acceptErrors = false;
       _retryTimer?.cancel();
+      _errorTimer?.cancel();
+      _controlsTimer?.cancel();
       unawaited(_player.pause());
-    } else if (_playIntent && _allowed) {
-      _load(_channel);
     }
   }
 
@@ -192,31 +242,32 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     if (_closed || !_allowed) return;
     final ticket = ++_generation;
     _retryTimer?.cancel();
+    _errorTimer?.cancel();
     if (!automatic) _retries = 0;
+    _healthyPlayback = Duration.zero;
     _acceptErrors = false;
     _playIntent = true;
     setState(() {
       _channel = channel;
       _loading = true;
+      _recovering = automatic;
       _error = null;
     });
+    if (!automatic) _showControls();
     _operations = _operations.catchError((Object _) {}).then((_) async {
       if (_closed || ticket != _generation || !_allowed) return;
       final previous = _playback;
-      _playback = null;
       LivePlayback? playback;
       try {
-        try {
-          await _player.stop();
-        } finally {
-          if (previous != null) await _release(previous);
-        }
         playback = await widget.repository.openLive(channel.id);
         if (_closed || ticket != _generation || !_allowed) {
           await _release(playback);
           return;
         }
+        await _player.stop();
+        _playingChannel = null;
         _playback = playback;
+        if (previous != null) await _release(previous);
         final platform = _player.platform;
         if (platform is NativePlayer) {
           if (Platform.isIOS) await platform.setProperty('cache-on-disk', 'no');
@@ -237,12 +288,23 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         }
         await _player.setVolume(AppDevice.supportsMediaVolume ? 100 : _volume);
         if (!_foreground || !_playIntent) await _player.pause();
+        if (_closed || ticket != _generation || !_allowed) {
+          await _player.stop();
+          if (identical(_playback, playback)) {
+            _playback = null;
+            await _release(playback);
+          }
+          return;
+        }
+        _playingChannel = channel.id;
         _lastPosition = _player.state.position;
         _lastProgress = DateTime.now();
         _acceptErrors = true;
         setState(() {
           _loading = false;
+          _recovering = false;
         });
+        _scheduleControlsHide();
       } catch (error) {
         if (playback != null) {
           await _release(playback);
@@ -250,14 +312,23 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         }
         if (!_closed && ticket == _generation && _allowed) {
           final message = error is AppFailure ? error.message : '直播初始化失败，请重新取流';
-          setState(() {
-            _loading = false;
-            _error = message;
-          });
           DiaryService.add('[Live] 频道 ${channel.id} 取流失败');
           _recover(message);
         }
       }
+    });
+  }
+
+  void _queueRecovery(String message) {
+    if (_errorTimer?.isActive == true ||
+        !_foreground ||
+        !_playIntent ||
+        !_allowed) {
+      return;
+    }
+    final ticket = _generation;
+    _errorTimer = Timer(const Duration(seconds: 8), () {
+      if (!_closed && ticket == _generation) _recover(message);
     });
   }
 
@@ -270,15 +341,31 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       return;
     }
     _acceptErrors = false;
-    setState(() {
-      _error = message;
-    });
-    if (_retries >= 2) return;
+    _errorTimer?.cancel();
+    _healthyPlayback = Duration.zero;
+    if (_retries >= 3) {
+      setState(() {
+        _loading = false;
+        _recovering = false;
+        _error = message;
+      });
+      _showControls();
+      return;
+    }
     _retries++;
+    setState(() {
+      _loading = false;
+      _recovering = true;
+      _error = null;
+    });
     final ticket = _generation;
-    DiaryService.add('[Live] 频道 ${_channel.id} 将重新取流（$_retries/2）');
-    _retryTimer = Timer(Duration(seconds: _retries * 2), () {
-      if (!_closed && ticket == _generation && _allowed) {
+    DiaryService.add('[Live] 频道 ${_channel.id} 自动恢复（$_retries/3）');
+    _retryTimer = Timer(Duration(seconds: 1 << (_retries - 1)), () {
+      if (!_closed &&
+          ticket == _generation &&
+          _allowed &&
+          _foreground &&
+          _playIntent) {
         _load(_channel, automatic: true);
       }
     });
@@ -299,8 +386,12 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     if (_playIntent) {
       _playIntent = false;
       _retryTimer?.cancel();
+      _errorTimer?.cancel();
       await _player.pause();
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() => _recovering = false);
+        _showControls();
+      }
     } else {
       _load(_channel);
     }
@@ -350,6 +441,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   Future<void> _setFullscreen(bool value) async {
     if (_closed) return;
     setState(() => _fullscreen = value);
+    _showControls();
     await _orientation?.setPlayback(
       this,
       fullscreen: value,
@@ -360,6 +452,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   Future<void> _chooseChannel() async {
     if (_channelPicker || !_allowed) return;
     _channelPicker = true;
+    _controlsTimer?.cancel();
     final selectedIndex = widget.channels.indexWhere(
       (channel) => channel.id == _channel.id,
     );
@@ -405,6 +498,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     } finally {
       scroll.dispose();
       _channelPicker = false;
+      _showControls();
     }
   }
 
@@ -413,7 +507,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     _closed = true;
     _generation++;
     _retryTimer?.cancel();
+    _errorTimer?.cancel();
+    _controlsTimer?.cancel();
     _healthTimer?.cancel();
+    _surfaceFocus.dispose();
+    _playFocus.dispose();
     widget.store.removeListener(_accessChanged);
     WidgetsBinding.instance.removeObserver(this);
     for (final subscription in _subscriptions) {
@@ -434,115 +532,261 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     super.dispose();
   }
 
-  Widget _videoPane() {
-    final overlay = Stack(
-      fit: StackFit.expand,
-      children: [
-        if (_loading) const Center(child: CircularProgressIndicator()),
-        if (_error != null)
-          Center(
-            child: Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .8),
-                borderRadius: BorderRadius.circular(16),
+  void _scheduleControlsHide() {
+    _controlsTimer?.cancel();
+    if (_closed ||
+        !_foreground ||
+        !_playIntent ||
+        !_player.state.playing ||
+        _loading ||
+        _error != null ||
+        _channelPicker ||
+        _volumePicker) {
+      return;
+    }
+    _controlsTimer = Timer(const Duration(seconds: 4), () {
+      if (!_closed &&
+          mounted &&
+          !_channelPicker &&
+          !_volumePicker &&
+          _playIntent &&
+          _error == null) {
+        _surfaceFocus.requestFocus();
+        setState(() => _controlsVisible = false);
+      }
+    });
+  }
+
+  void _showControls() {
+    if (_closed || !mounted) return;
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _scheduleControlsHide();
+  }
+
+  void _toggleControls() {
+    if (_closed || !_allowed) return;
+    setState(() => _controlsVisible = !_controlsVisible);
+    _surfaceFocus.requestFocus();
+    _scheduleControlsHide();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    const navigation = [
+      LogicalKeyboardKey.arrowUp,
+      LogicalKeyboardKey.arrowDown,
+      LogicalKeyboardKey.arrowLeft,
+      LogicalKeyboardKey.arrowRight,
+      LogicalKeyboardKey.enter,
+      LogicalKeyboardKey.select,
+    ];
+    if (!navigation.contains(event.logicalKey)) return KeyEventResult.ignored;
+    final hidden = !_controlsVisible;
+    _showControls();
+    if (hidden && AppLayout.isTelevision(context)) {
+      _playFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Widget _controlBar() => LayoutBuilder(
+    builder: (context, constraints) {
+      final buttonWidth = ((constraints.maxWidth - 16) / 7).clamp(36.0, 48.0);
+      Widget button(Widget child) =>
+          SizedBox(width: buttonWidth, height: 48, child: child);
+      return Container(
+        key: const ValueKey('live-control-bar'),
+        color: Colors.black.withValues(alpha: .65),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            button(
+              IconButton(
+                tooltip: '上一个频道',
+                onPressed: _allowed ? () => _changeChannel(-1) : null,
+                icon: const Icon(Icons.skip_previous),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _allowed ? () => _load(_channel) : null,
-                    child: const Text('重新取流'),
-                  ),
+            ),
+            button(
+              IconButton(
+                focusNode: _playFocus,
+                autofocus: AppLayout.isTelevision(context),
+                tooltip: _playIntent ? '暂停' : '播放直播',
+                onPressed: _allowed && !_loading ? _togglePlayback : null,
+                icon: Icon(_playIntent ? Icons.pause : Icons.play_arrow),
+              ),
+            ),
+            button(
+              IconButton(
+                tooltip: '下一个频道',
+                onPressed: _allowed ? () => _changeChannel(1) : null,
+                icon: const Icon(Icons.skip_next),
+              ),
+            ),
+            Expanded(
+              child: constraints.maxWidth >= 600
+                  ? Text(
+                      '直播 · ${_channel.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            button(
+              IconButton(
+                tooltip: '频道',
+                onPressed: _allowed ? _chooseChannel : null,
+                icon: const Icon(Icons.list),
+              ),
+            ),
+            button(
+              IconButton(
+                tooltip: '回到直播',
+                onPressed: _allowed ? () => _load(_channel) : null,
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+            button(
+              PopupMenuButton<double>(
+                tooltip: '音量',
+                enabled: _volumeReady && _allowed,
+                icon: const Icon(Icons.volume_up),
+                initialValue: _volume,
+                onOpened: () {
+                  _volumePicker = true;
+                  _controlsTimer?.cancel();
+                },
+                onCanceled: () {
+                  _volumePicker = false;
+                  _showControls();
+                },
+                onSelected: (value) {
+                  _volumePicker = false;
+                  _setVolume(value);
+                  _showControls();
+                },
+                itemBuilder: (_) => [
+                  for (final value in [0.0, 25.0, 50.0, 75.0, 100.0])
+                    PopupMenuItem(
+                      value: value,
+                      child: Text('音量 ${value.round()}%'),
+                    ),
                 ],
               ),
             ),
-          ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            color: Colors.black.withValues(alpha: .72),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: '上一个频道',
-                      onPressed: _allowed ? () => _changeChannel(-1) : null,
-                      icon: const Icon(Icons.skip_previous),
-                    ),
-                    IconButton(
-                      autofocus: AppLayout.isTelevision(context),
-                      tooltip: _playIntent ? '暂停' : '播放直播',
-                      onPressed: _allowed && !_loading ? _togglePlayback : null,
-                      icon: Icon(_playIntent ? Icons.pause : Icons.play_arrow),
-                    ),
-                    IconButton(
-                      tooltip: '下一个频道',
-                      onPressed: _allowed ? () => _changeChannel(1) : null,
-                      icon: const Icon(Icons.skip_next),
-                    ),
-                    Expanded(
-                      child: Text(
-                        '直播 · ${_channel.name}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: _fullscreen ? '退出全屏' : '全屏',
-                      onPressed: () => _setFullscreen(!_fullscreen),
-                      icon: Icon(
-                        _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                      ),
-                    ),
-                  ],
+            button(
+              IconButton(
+                tooltip: _fullscreen ? '退出全屏' : '全屏',
+                onPressed: () => _setFullscreen(!_fullscreen),
+                icon: Icon(
+                  _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    TextButton.icon(
-                      onPressed: _allowed ? _chooseChannel : null,
-                      icon: const Icon(Icons.list),
-                      label: const Text('频道'),
-                    ),
-                    TextButton.icon(
-                      onPressed: _allowed ? () => _load(_channel) : null,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('回到直播'),
-                    ),
-                    PopupMenuButton<double>(
-                      tooltip: '音量',
-                      enabled: _volumeReady && _allowed,
-                      icon: const Icon(Icons.volume_up),
-                      initialValue: _volume,
-                      onSelected: _setVolume,
-                      itemBuilder: (_) => [
-                        for (final value in [0.0, 25.0, 50.0, 75.0, 100.0])
-                          PopupMenuItem(
-                            value: value,
-                            child: Text('音量 ${value.round()}%'),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      );
+    },
+  );
+
+  Widget _videoPane() {
+    final overlay = MouseRegion(
+      onHover: (_) => _showControls(),
+      cursor: _controlsVisible
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.none,
+      child: Listener(
+        onPointerDown: (_) {
+          if (_controlsVisible) _scheduleControlsHide();
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            GestureDetector(
+              key: const ValueKey('live-gesture-surface'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleControls,
+              child: const SizedBox.expand(),
+            ),
+            if (_loading)
+              const IgnorePointer(
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            if (_recovering && !_loading)
+              const Positioned(
+                top: 12,
+                right: 12,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0x99000000),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Text(
+                        '正在恢复直播…',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (_error != null)
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: .8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: _allowed ? () => _load(_channel) : null,
+                        child: const Text('重新取流'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: ExcludeFocus(
+                  excluding: !_controlsVisible,
+                  child: AnimatedOpacity(
+                    key: const ValueKey('live-controls'),
+                    opacity: _controlsVisible ? 1 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: _controlBar(),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
     return Theme(
       data: ThemeData.dark(useMaterial3: true),
       child: ColoredBox(
         color: Colors.black,
-        child: _player is LunaExoPlayer
+        child: widget.videoBuilder != null
+            ? widget.videoBuilder!(overlay)
+            : _player is LunaExoPlayer
             ? LunaExoVideoView(player: _player, controls: (_) => overlay)
             : Video(
                 controller: _video!,
@@ -578,6 +822,8 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           },
         },
         child: Focus(
+          focusNode: _surfaceFocus,
+          onKeyEvent: _handleKey,
           autofocus: !television,
           child: Scaffold(
             appBar: _fullscreen
