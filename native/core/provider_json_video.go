@@ -30,7 +30,7 @@ func isJSONVideoSource(source string) bool {
 
 func jsonVideoReferer(source string) string {
 	if source == sourceHongdou {
-		return "https://hdou.tv/"
+		return "https://h5.dramaplay.shop/"
 	}
 	if source == sourceXifu {
 		return "https://minidrama.contentchina.com/"
@@ -278,7 +278,8 @@ func (d *Downloader) fetchJSONVideoDetail(ctx context.Context, source, id string
 		for index, entry := range rows {
 			key := mapString(entry, "id")
 			address := maccmsDirectMediaURL(mapString(entry, "src", "videourl"))
-			if !webProviderNumericID.MatchString(key) || address == "" || seen[key] {
+			hasHLS := mapString(entry, "has_hls") == "1"
+			if !webProviderNumericID.MatchString(key) || address == "" && !hasHLS || seen[key] {
 				continue
 			}
 			seen[key] = true
@@ -286,7 +287,12 @@ func (d *Downloader) fetchJSONVideoDetail(ctx context.Context, source, id string
 			if sequence < 1 {
 				sequence = index + 1
 			}
-			chapters = append(chapters, jsonVideoChapter(source, id, key, mapString(entry, "name", "fjname"), address, sequence))
+			chapter := jsonVideoChapter(source, id, key, mapString(entry, "name", "fjname"), address, sequence)
+			if hasHLS {
+				chapter.VideoURL = ""
+				chapter.PageURL = d.providerBaseURL(source) + "/api/video/videoinfo?" + hongdouPlaybackParameters(id, key).Encode()
+			}
+			chapters = append(chapters, chapter)
 		}
 		if len(chapters) == 0 {
 			if address := maccmsDirectMediaURL(mapString(row, "videourl")); address != "" {
@@ -355,8 +361,18 @@ func (d *Downloader) resolveJSONVideoMedia(ctx context.Context, task Task) (prov
 	}
 	for _, chapter := range chapters {
 		if chapter.ID == task.Chapter.ID && (task.Chapter.Title == "" || task.Chapter.Title == chapter.Title) {
+			if source == sourceHongdou && chapter.PageURL != "" {
+				return d.resolveHongdouHLSMedia(ctx, id, strings.TrimPrefix(chapter.ID, prefix))
+			}
 			credentials := &providerMediaCredentials{referer: chapter.Referer, userAgent: jsonVideoUserAgent(source)}
-			return d.prepareWebProviderMedia(ctx, providerMedia{URL: chapter.VideoURL, Referer: chapter.Referer, credentials: credentials}, "站源")
+			media, err := d.prepareWebProviderMedia(ctx, providerMedia{URL: chapter.VideoURL, Referer: chapter.Referer, credentials: credentials}, "站源")
+			if err != nil {
+				return providerMedia{}, err
+			}
+			if source == sourceXiaopingguo {
+				return d.checkXiaopingguoMedia(ctx, media)
+			}
+			return media, nil
 		}
 	}
 	return providerMedia{}, errors.New("原播放分集已变化，请刷新详情")
