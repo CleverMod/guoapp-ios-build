@@ -23,6 +23,7 @@ import (
 const yspVersion = "3.2.7.26212"
 const yspAppVersion = "V8.22.1035.3031"
 const yspUA = "qqlive"
+const yspJCEUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 
 type yspWriter struct{ bytes.Buffer }
 
@@ -308,6 +309,10 @@ func yspPacket(body []byte, guid string, requestID int64) []byte {
 }
 
 func (live *yspLiveServer) request(ctx context.Context, method, address string, body []byte, headers map[string]string) ([]byte, string, error) {
+	return yspRequestClient(ctx, live.client, method, address, body, headers)
+}
+
+func yspRequestClient(ctx context.Context, client *http.Client, method, address string, body []byte, headers map[string]string) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(body))
 	if err != nil {
 		return nil, "", err
@@ -315,7 +320,7 @@ func (live *yspLiveServer) request(ctx context.Context, method, address string, 
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := live.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", errors.New("央视频网络请求失败，请重试")
 	}
@@ -444,8 +449,9 @@ func yspKey(ch yspChannel) (url.Values, error) {
 	}
 	guid := hex.EncodeToString(random[:16])
 	uid := strings.ToUpper(hex.EncodeToString(random[16:20]))
+	random[26] = random[26]&15 | 64
+	random[28] = random[28]&63 | 128
 	flow := strings.ToUpper(hex.EncodeToString(random[20:]))
-	flow = flow[:8] + "-" + flow[8:12] + "-" + flow[12:16] + "-" + flow[16:20] + "-" + flow[20:]
 	guardKey, _ := hex.DecodeString("110DBEC10C23E7D2E56A1CAD6914EF1B")
 	teaKey, _ := hex.DecodeString("59b2f7cf725ef43c34fdd7c123411ed3")
 	guard := yspU32(ts)
