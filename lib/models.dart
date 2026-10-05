@@ -14,7 +14,9 @@ class SourceSite {
       id == 'dsd' ||
       id == 'sorani' ||
       id == 'guipian' ||
-      id == 'hanxiaoquan';
+      id == 'hanxiaoquan' ||
+      id == 'liangzi' ||
+      id == 'jciyuan';
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
     'huangguo-video' || 'huangguoai' || 'cloudfront' => 'huangguo',
@@ -50,6 +52,8 @@ class SourceSite {
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
+    SourceSite('liangzi', '量子', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('jciyuan', '囧次元', '动漫 · 在线搜索'),
   ];
   static const values = allSourcesEnabled ? allValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);

@@ -26,7 +26,7 @@ void main() {
 
     expect(store.configurationError, isNull);
     expect(store.sources.map((site) => site.id), sourceIds);
-    expect(store.sources, hasLength(allSourcesEnabled ? 11 : 1));
+    expect(store.sources, hasLength(allSourcesEnabled ? 13 : 1));
     for (final source in sourceIds) {
       expect(store.allowsSource(source), isTrue);
     }
