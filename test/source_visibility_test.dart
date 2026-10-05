@@ -26,11 +26,83 @@ void main() {
 
     expect(store.configurationError, isNull);
     expect(store.sources.map((site) => site.id), sourceIds);
-    expect(store.sources, hasLength(allSourcesEnabled ? 46 : 1));
+    expect(store.sources, hasLength(allSourcesEnabled ? 44 : 1));
     for (final source in sourceIds) {
       expect(store.allowsSource(source), isTrue);
     }
   });
+
+  test(
+    'removed source permissions preserve profiles and backup records',
+    () async {
+      const retired = Drama(
+        id: 'hongdou:123',
+        source: 'hongdou',
+        sourceId: '123',
+        title: '合成旧记录',
+      );
+      final history = WatchEntry(
+        drama: retired,
+        episode: 1,
+        position: 12,
+        duration: 60,
+        updatedAt: DateTime(2026, 10, 5),
+      );
+      SharedPreferences.setMockInitialValues({
+        'profiles': jsonEncode([
+          LocalProfile(
+            id: 'default',
+            name: '管理员',
+            admin: true,
+            salt: '0' * 32,
+            pinHash: '1' * 64,
+          ).toJson(),
+          const LocalProfile(
+            id: 'viewer',
+            name: '已有用户',
+            sources: ['hongdou', 'hongguo', 'xiaopingguo', 'xifu'],
+          ).toJson(),
+        ]),
+        'activeProfile': 'default',
+        'forceLogin': false,
+        'source': 'hongdou',
+        'profile.viewer.source': 'hongdou',
+        'profile.viewer.favorites': jsonEncode([retired.toJson()]),
+        'profile.viewer.history': jsonEncode([history.toJson()]),
+      });
+      final store = testStore(await SharedPreferences.getInstance());
+      addTearDown(store.dispose);
+      expect(store.configurationError, isNull);
+      expect(store.profile.id, 'default');
+      expect(
+        store.profiles.firstWhere((profile) => profile.id == 'viewer').sources,
+        ['hongguo', 'xifu'],
+      );
+      expect(store.source, 'hongguo');
+      expect(store.favorites, isEmpty);
+      expect(store.history, isEmpty);
+      expect(store.allowsSource('hongdou'), isFalse);
+      expect(store.allowsSource('xiaopingguo'), isFalse);
+      final backup = jsonDecode(await store.exportBackup()) as Map;
+      final library = (backup['libraries'] as Map)['viewer'] as Map;
+      expect((library['favorites'] as List).single['id'], retired.id);
+      expect((library['history'] as List).single['drama']['id'], retired.id);
+      await store.importBackup(jsonEncode(backup));
+      await store.switchProfile('viewer');
+      expect(store.configurationError, isNull);
+      expect(store.source, 'hongguo');
+      expect(store.profile.sources, ['hongguo', 'xifu']);
+      expect(store.favorites, isEmpty);
+      expect(store.history, isEmpty);
+      expect(
+        () => LocalProfile.fromJson({
+          ...store.profile.toJson(),
+          'sources': ['unregistered-source'],
+        }),
+        throwsFormatException,
+      );
+    },
+  );
 
   test('legacy preference locks cannot hide sources after upgrade', () async {
     SharedPreferences.setMockInitialValues({

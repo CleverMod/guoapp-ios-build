@@ -28,6 +28,7 @@ type nativeCatalogDisk struct {
 }
 
 func (engine *nativeEngine) loadCatalogCache() {
+	defer engine.filterKnownCatalogSources()
 	file, err := os.Open(filepath.Join(engine.directory, "catalogs.json"))
 	if err != nil {
 		return
@@ -73,6 +74,28 @@ func (engine *nativeEngine) loadCatalogCache() {
 			for index := range items {
 				items[index] = migrateNativeDrama(items[index])
 			}
+		}
+	}
+}
+
+func (engine *nativeEngine) filterKnownCatalogSources() {
+	known := func(key string) bool {
+		source, _, _ := strings.Cut(key, "|")
+		return isHuangguoProviderSource(source)
+	}
+	for key := range engine.catalogs {
+		if !known(key) {
+			delete(engine.catalogs, key)
+		}
+	}
+	for key := range engine.catalogStates {
+		if !known(key) {
+			delete(engine.catalogStates, key)
+		}
+	}
+	for key := range engine.categoryOptions {
+		if !known(key) {
+			delete(engine.categoryOptions, key)
 		}
 	}
 }

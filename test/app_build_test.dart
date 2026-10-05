@@ -18,7 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
     final store = testStore(await SharedPreferences.getInstance());
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(store.sources.length, allSourcesEnabled ? 46 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 44 : 1);
     expect(
       SourceSite.values.any((source) => source.id == 'dsd'),
       allSourcesEnabled,
@@ -28,7 +28,7 @@ void main() {
     expect(SourceSite.byId('dsd').name, '帝果');
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     expect(store.source, allSourcesEnabled ? 'huangdou' : 'hongguo');
-    expect(store.sources.length, allSourcesEnabled ? 46 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 44 : 1);
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     store.dispose();
   });
@@ -56,19 +56,21 @@ void main() {
       expect(SourceSite.collectorValues, hasLength(32));
       expect(
         SourceSite.allValues.map((source) => source.id).toSet(),
-        hasLength(46),
+        hasLength(44),
       );
-      for (final source in [
-        ...SourceSite.collectorValues.map((source) => source.id),
-        'xiaopingguo',
-        'hongdou',
-      ]) {
+      for (final source in SourceSite.collectorValues.map(
+        (source) => source.id,
+      )) {
         expect(SourceSite.isKnown(source), isTrue);
         expect(SourceSite.isAvailable(source), allSourcesEnabled);
         expect(SourceSite.byId(source).pagedSearch, isTrue);
       }
       expect(SourceSite.isAvailable('xifu'), allSourcesEnabled);
       expect(SourceSite.byId('xifu').onlineSearch, isFalse);
+      for (final source in ['xiaopingguo', 'hongdou']) {
+        expect(SourceSite.isKnown(source), isFalse);
+        expect(SourceSite.isAvailable(source), isFalse);
+      }
       final group = SourceGroup.fromSources(
         SourceSite.allValues,
       ).singleWhere((group) => group.id == 'huangguo');
@@ -194,6 +196,8 @@ void main() {
             .where((source) => !SourceSite.isAvailable(source.id))
             .map((source) => source.id),
         'unknown',
+        'xiaopingguo',
+        'hongdou',
       ];
       for (final source in denied) {
         final drama = Drama(id: '$source:123', source: source, title: '合成数据');

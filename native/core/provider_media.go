@@ -49,12 +49,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.LiangziURL, liangziBaseURL
 	case sourceJciyuan:
 		configured, fallback = d.cfg.JciyuanURL, jciyuanBaseURL
-	case sourceXiaopingguo:
-		fallback = xiaopingguoBaseURL
 	case sourceXifu:
 		fallback = xifuBaseURL
-	case sourceHongdou:
-		fallback = hongdouBaseURL
 	default:
 		if provider, valid := maccmsProviderByID(source); valid {
 			fallback = provider.baseURL
@@ -99,12 +95,8 @@ func providerSourceForURL(raw string) string {
 		return sourceLiangzi
 	case host == "jciyuan.com" || host == "www.jciyuan.com":
 		return sourceJciyuan
-	case host == "asp.xpgtv.com":
-		return sourceXiaopingguo
 	case host == "minidrama-api.contentchina.com":
 		return sourceXifu
-	case host == "api.dramaplay.shop":
-		return sourceHongdou
 	default:
 		return maccmsSourceForHost(host)
 	}

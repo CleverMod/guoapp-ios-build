@@ -15,8 +15,6 @@ class SourceSite {
       id == 'sorani' ||
       id == 'guipian' ||
       id == 'hanxiaoquan' ||
-      id == 'xiaopingguo' ||
-      id == 'hongdou' ||
       collectorValues.any((site) => site.id == id);
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
@@ -89,13 +87,12 @@ class SourceSite {
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
     ...collectorValues,
-    SourceSite('xiaopingguo', '小苹果', '影视 · 分类 · 在线搜索'),
     SourceSite('xifu', '喜福', '分类短剧'),
-    SourceSite('hongdou', '红豆', '短剧 · 在线搜索'),
   ];
   static const values = allSourcesEnabled ? allValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);
   static bool isKnown(String id) => allValues.any((site) => site.id == id);
+  static bool isRetired(String id) => id == 'xiaopingguo' || id == 'hongdou';
   static SourceSite byId(String id) =>
       allValues.firstWhere((site) => site.id == id, orElse: () => hongguo);
 }

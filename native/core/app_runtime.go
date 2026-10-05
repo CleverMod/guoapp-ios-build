@@ -593,15 +593,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
-	if query != "" && (isMaccmsSource(source) || source == sourceXiaopingguo || source == sourceHongdou) {
-		var items []Drama
-		var more bool
-		var err error
-		if isMaccmsSource(source) {
-			items, more, err = d.fetchMaccmsCatalogPage(ctx, source, page, "", query)
-		} else {
-			items, more, err = d.fetchJSONVideoCatalogPage(ctx, source, page, "", query)
-		}
+	if query != "" && isMaccmsSource(source) {
+		items, more, err := d.fetchMaccmsCatalogPage(ctx, source, page, "", query)
 		if err != nil {
 			return result, err
 		}

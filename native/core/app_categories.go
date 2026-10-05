@@ -69,7 +69,7 @@ func validNativeCategory(source, category string) bool {
 		return validGuipianCategory(category)
 	case sourceHanxiaoquan:
 		return validHanxiaoquanCategory(category)
-	case sourceXiaopingguo, sourceXifu, sourceHongdou:
+	case sourceXifu:
 		return webProviderNumericID.MatchString(category)
 	}
 	return isMaccmsSource(source) && webProviderNumericID.MatchString(category)

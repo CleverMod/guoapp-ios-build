@@ -42,7 +42,7 @@ class LocalProfile {
     final admin = value['admin'] == true;
     final sources = (value['sources'] as List)
         .cast<String>()
-        .where((id) => id != 'yeguo-worker')
+        .where((id) => id != 'yeguo-worker' && !SourceSite.isRetired(id))
         .toSet()
         .toList();
     final salt = value['salt'] as String? ?? '';

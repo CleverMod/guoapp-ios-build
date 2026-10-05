@@ -33,9 +33,7 @@ const (
 	sourceHanxiaoquan   = "hanxiaoquan"
 	sourceLiangzi       = "liangzi"
 	sourceJciyuan       = "jciyuan"
-	sourceXiaopingguo   = "xiaopingguo"
 	sourceXifu          = "xifu"
-	sourceHongdou       = "hongdou"
 
 	providerMaxBodyBytes = 20 * 1024 * 1024
 	providerTimeout      = 12 * time.Second
@@ -96,7 +94,7 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 
 func isHuangguoProviderSource(source string) bool {
 	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceXiaopingguo, sourceXifu, sourceHongdou:
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceXifu:
 		return true
 	default:
 		return isMaccmsSource(source)
@@ -131,12 +129,8 @@ func canonicalProviderSource(source string) string {
 		return sourceLiangzi
 	case "jciyuan", "jciyuan.com", "www.jciyuan.com":
 		return sourceJciyuan
-	case "xiaopingguo", "asp.xpgtv.com":
-		return sourceXiaopingguo
 	case "xifu", "minidrama-api.contentchina.com":
 		return sourceXifu
-	case "hongdou", "api.dramaplay.shop":
-		return sourceHongdou
 	default:
 		key := strings.ToLower(strings.TrimSpace(source))
 		if provider, valid := maccmsProviderByID(key); valid {

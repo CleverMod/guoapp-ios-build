@@ -6,42 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
 
-const (
-	xiaopingguoBaseURL = "http://asp.xpgtv.com"
-	xifuBaseURL        = "https://minidrama-api.contentchina.com"
-	hongdouBaseURL     = "https://api.dramaplay.shop"
-)
-
-var xiaopingguoMediaID = regexp.MustCompile(`^[A-Za-z0-9_+/=-]{1,512}$`)
+const xifuBaseURL = "https://minidrama-api.contentchina.com"
 
 func isJSONVideoSource(source string) bool {
-	switch canonicalProviderSource(source) {
-	case sourceXiaopingguo, sourceXifu, sourceHongdou:
-		return true
-	}
-	return false
+	return canonicalProviderSource(source) == sourceXifu
 }
 
 func jsonVideoReferer(source string) string {
-	if source == sourceHongdou {
-		return "https://h5.dramaplay.shop/"
-	}
-	if source == sourceXifu {
-		return "https://minidrama.contentchina.com/"
-	}
-	return xiaopingguoBaseURL + "/"
+	return "https://minidrama.contentchina.com/"
 }
 
 func jsonVideoUserAgent(source string) string {
-	if source == sourceXiaopingguo {
-		return "okhttp/3.12.11"
-	}
 	return "Mozilla/5.0"
 }
 
@@ -86,28 +65,13 @@ func jsonVideoRows(value any) []map[string]any {
 }
 
 func (d *Downloader) fetchJSONVideoCategories(ctx context.Context, source string) ([]nativeCategory, error) {
-	if source == sourceHongdou {
-		return []nativeCategory{
-			{ID: "334", Name: "都市"}, {ID: "155", Name: "古装"}, {ID: "338", Name: "爱情"},
-			{ID: "362", Name: "总裁"}, {ID: "285", Name: "甜宠"}, {ID: "332", Name: "逆袭"},
-			{ID: "341", Name: "重生"}, {ID: "306", Name: "穿越"}, {ID: "397", Name: "玄幻"}, {ID: "220", Name: "悬疑"},
-		}, nil
-	}
-	path, parameters := "/api.php/v2.vod/androidtypes", url.Values{}
-	if source == sourceXifu {
-		path, parameters = "/web/v1/home/categoryList", url.Values{"isLeft": {"1"}}
-	}
-	response, err := d.jsonVideoRequest(ctx, source, path, parameters)
+	response, err := d.jsonVideoRequest(ctx, source, "/web/v1/home/categoryList", url.Values{"isLeft": {"1"}})
 	if err != nil {
 		return nil, err
 	}
-	rows := jsonVideoRows(response["data"])
-	if source == sourceXifu {
-		rows = jsonVideoRows(nestedMap(response, "data")["categories"])
-	}
 	var categories []nativeCategory
 	seen := map[string]bool{}
-	for _, row := range rows {
+	for _, row := range jsonVideoRows(nestedMap(response, "data")["categories"]) {
 		id := mapString(row, "type_id", "id")
 		name := truncate(cleanText(mapString(row, "type_name", "name")), 64)
 		if webProviderNumericID.MatchString(id) && name != "" && !seen[id] {
@@ -127,15 +91,9 @@ func (d *Downloader) jsonVideoDrama(source string, row map[string]any) Drama {
 		return Drama{}
 	}
 	coverBase := d.providerBaseURL(source) + "/"
-	if source == sourceHongdou {
-		coverBase = "https://static.hdou.tv/"
-	}
 	cover := providerCoverAddress(firstNonEmpty(mapString(row, "coverUrl", "img", "pic")), coverBase)
 	intro := truncate(cleanText(mapString(row, "introduction", "story", "content", "info")), 8192)
 	total, _ := webProviderInteger(row["total"], 10000)
-	if source == sourceHongdou {
-		total, _ = webProviderInteger(row["sum"], 10000)
-	}
 	category := truncate(cleanText(mapString(row, "className", "text")), 128)
 	var tags []string
 	if source == sourceXifu {
@@ -159,61 +117,26 @@ func (d *Downloader) fetchJSONVideoCatalogPage(ctx context.Context, source strin
 	if !isJSONVideoSource(source) || page < 1 || page > 100000 || !validNativeCategory(source, category) {
 		return nil, false, errors.New("站源目录参数无效")
 	}
-	var path string
-	parameters := url.Values{}
-	query = strings.TrimSpace(query)
-	switch source {
-	case sourceXiaopingguo:
-		parameters.Set("page", strconv.Itoa(page))
-		path = "/api.php/v2.vod/androidfilter10086"
-		parameters.Set("type", firstNonEmpty(category, "0"))
-		if query != "" {
-			path = "/api.php/v2.vod/androidsearch10086"
-			parameters.Del("type")
-			parameters.Set("wd", query)
-		}
-	case sourceXifu:
-		if query != "" {
-			return nil, false, errors.New("喜福仅支持已加载目录内搜索")
-		}
-		path = "/web/v1/drama/list"
-		parameters.Set("currentPage", strconv.Itoa(page))
-		parameters.Set("pageSize", "24")
-		if category != "" {
-			parameters.Set("filterCategories[]", category)
-		}
-	case sourceHongdou:
-		path = "/api/video/lists"
-		parameters = url.Values{"limit": {"24"}, "offset": {strconv.Itoa((page - 1) * 24)}, "lx": {"1"}}
-		if query != "" {
-			parameters.Set("key", query)
-		} else if category != "" {
-			parameters.Set("type", category)
-		}
+	if strings.TrimSpace(query) != "" {
+		return nil, false, errors.New("喜福仅支持已加载目录内搜索")
 	}
-	response, err := d.jsonVideoRequest(ctx, source, path, parameters)
+	parameters := url.Values{"currentPage": {strconv.Itoa(page)}, "pageSize": {"24"}}
+	if category != "" {
+		parameters.Set("filterCategories[]", category)
+	}
+	response, err := d.jsonVideoRequest(ctx, source, "/web/v1/drama/list", parameters)
 	if err != nil {
 		return nil, false, err
 	}
-	rows, more := jsonVideoRows(response["data"]), false
-	switch source {
-	case sourceXiaopingguo:
-		more = len(rows) >= 20
-	case sourceXifu:
-		data := nestedMap(response, "data")
-		rows = jsonVideoRows(data["data"])
-		pagination := nestedMap(data, "pagination")
-		actual, ok := webProviderInteger(pagination["currentPage"], 100000)
-		if ok && actual > 0 && actual != page {
-			return nil, false, errors.New("喜福返回的页码与请求不符")
-		}
-		pages, ok := webProviderInteger(pagination["totalPages"], 100000)
-		more = ok && page < pages || !ok && len(rows) >= 24
-	case sourceHongdou:
-		rows = jsonVideoRows(response["rows"])
-		total, ok := webProviderInteger(response["total"], 10000000)
-		more = ok && page*24 < total || !ok && len(rows) >= 24
+	data := nestedMap(response, "data")
+	rows := jsonVideoRows(data["data"])
+	pagination := nestedMap(data, "pagination")
+	actual, ok := webProviderInteger(pagination["currentPage"], 100000)
+	if ok && actual > 0 && actual != page {
+		return nil, false, errors.New("喜福返回的页码与请求不符")
 	}
+	pages, ok := webProviderInteger(pagination["totalPages"], 100000)
+	more := ok && page < pages || !ok && len(rows) >= 24
 	items := make([]Drama, 0, len(rows))
 	seen := map[string]bool{}
 	for _, row := range rows {
@@ -236,75 +159,7 @@ func (d *Downloader) fetchJSONVideoDetail(ctx context.Context, source, id string
 	if !isJSONVideoSource(source) || !webProviderNumericID.MatchString(id) {
 		return Drama{}, nil, errors.New("站源影片 ID 无效")
 	}
-	if source == sourceXifu {
-		return d.fetchXifuDetail(ctx, id, known)
-	}
-	path, parameters := "/api.php/v3.vod/androiddetail2", url.Values{"vod_id": {id}}
-	if source == sourceHongdou {
-		path, parameters = "/api/video/info", url.Values{"id": {id}, "mid": {"0"}}
-	}
-	response, err := d.jsonVideoRequest(ctx, source, path, parameters)
-	if err != nil {
-		return Drama{}, nil, err
-	}
-	row := response
-	if source == sourceXiaopingguo {
-		row = nestedMap(response, "data")
-	}
-	if mapString(row, "id") != id {
-		return Drama{}, nil, errors.New("详情未返回所请求的影片，请刷新目录")
-	}
-	drama := d.jsonVideoDrama(source, row)
-	var chapters []Chapter
-	if source == sourceXiaopingguo {
-		for index, entry := range jsonVideoRows(row["urls"]) {
-			raw := strings.TrimSpace(mapString(entry, "url"))
-			address := maccmsDirectMediaURL(raw)
-			if address == "" && xiaopingguoMediaID.MatchString(raw) {
-				address = "http://c.xpgtv.net/m3u8/" + url.PathEscape(raw) + ".m3u8"
-			}
-			if address != "" {
-				chapters = append(chapters, jsonVideoChapter(source, id, strconv.Itoa(index), mapString(entry, "key", "name"), address, index+1))
-			}
-		}
-	} else {
-		rows := jsonVideoRows(row["video"])
-		sort.SliceStable(rows, func(i, j int) bool {
-			a, _ := webProviderInteger(rows[i]["weigh"], 100000)
-			b, _ := webProviderInteger(rows[j]["weigh"], 100000)
-			return a < b
-		})
-		seen := map[string]bool{}
-		for index, entry := range rows {
-			key := mapString(entry, "id")
-			address := maccmsDirectMediaURL(mapString(entry, "src", "videourl"))
-			hasHLS := mapString(entry, "has_hls") == "1"
-			if !webProviderNumericID.MatchString(key) || address == "" && !hasHLS || seen[key] {
-				continue
-			}
-			seen[key] = true
-			sequence, _ := webProviderInteger(entry["weigh"], 10000)
-			if sequence < 1 {
-				sequence = index + 1
-			}
-			chapter := jsonVideoChapter(source, id, key, mapString(entry, "name", "fjname"), address, sequence)
-			if hasHLS {
-				chapter.VideoURL = ""
-				chapter.PageURL = d.providerBaseURL(source) + "/api/video/videoinfo?" + hongdouPlaybackParameters(id, key).Encode()
-			}
-			chapters = append(chapters, chapter)
-		}
-		if len(chapters) == 0 {
-			if address := maccmsDirectMediaURL(mapString(row, "videourl")); address != "" {
-				chapters = append(chapters, jsonVideoChapter(source, id, "current", mapString(row, "ji"), address, 1))
-			}
-		}
-	}
-	if drama.ID == "" || len(chapters) == 0 {
-		return Drama{}, nil, errors.New("该影片暂无可直接播放的分集")
-	}
-	drama.TotalEpisode = len(chapters)
-	return drama, chapters, nil
+	return d.fetchXifuDetail(ctx, id, known)
 }
 
 func (d *Downloader) fetchXifuDetail(ctx context.Context, id string, known nativeDrama) (Drama, []Chapter, error) {
@@ -346,34 +201,11 @@ func (d *Downloader) resolveJSONVideoMedia(ctx context.Context, task Task) (prov
 	if !valid || !isJSONVideoSource(source) || task.Chapter.Source != "" && canonicalProviderSource(task.Chapter.Source) != source || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return providerMedia{}, errors.New("播放章节与影片不符，请刷新详情")
 	}
+	key := strings.TrimPrefix(task.Chapter.ID, prefix)
+	sequence, err := strconv.Atoi(key)
+	if err != nil || sequence < 1 || sequence > 10000 || strconv.Itoa(sequence) != key {
+		return providerMedia{}, errors.New("喜福播放集数无效")
+	}
 	ctx = context.WithValue(ctx, providerTextNoCacheKey{}, true)
-	if source == sourceXifu {
-		key := strings.TrimPrefix(task.Chapter.ID, prefix)
-		sequence, err := strconv.Atoi(key)
-		if err != nil || sequence < 1 || sequence > 10000 || strconv.Itoa(sequence) != key {
-			return providerMedia{}, errors.New("喜福播放集数无效")
-		}
-		return d.resolveXifuMedia(ctx, id, sequence)
-	}
-	_, chapters, err := d.fetchJSONVideoDetail(ctx, source, id, nativeDrama{})
-	if err != nil {
-		return providerMedia{}, err
-	}
-	for _, chapter := range chapters {
-		if chapter.ID == task.Chapter.ID && (task.Chapter.Title == "" || task.Chapter.Title == chapter.Title) {
-			if source == sourceHongdou && chapter.PageURL != "" {
-				return d.resolveHongdouHLSMedia(ctx, id, strings.TrimPrefix(chapter.ID, prefix))
-			}
-			credentials := &providerMediaCredentials{referer: chapter.Referer, userAgent: jsonVideoUserAgent(source)}
-			media, err := d.prepareWebProviderMedia(ctx, providerMedia{URL: chapter.VideoURL, Referer: chapter.Referer, credentials: credentials}, "站源")
-			if err != nil {
-				return providerMedia{}, err
-			}
-			if source == sourceXiaopingguo {
-				return d.checkXiaopingguoMedia(ctx, media)
-			}
-			return media, nil
-		}
-	}
-	return providerMedia{}, errors.New("原播放分集已变化，请刷新详情")
+	return d.resolveXifuMedia(ctx, id, sequence)
 }
