@@ -13,7 +13,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import BuildVariant, add_variant_argument, source_access_flags
 
 root = Path(__file__).resolve().parents[1]
 
@@ -94,7 +94,7 @@ def build_core(simulator=False, variant=BuildVariant(), session_flags=''):
                  '-o', str(output), './bridge'], cwd=root / 'native', env=build_env)
         except subprocess.CalledProcessError as error:
             if session_flags:
-                raise SystemExit(f'iOS 核心编译失败，退出码 {error.returncode}；构建参数中的会话已隐藏。') from None
+                raise SystemExit(f'iOS 核心编译失败，退出码 {error.returncode}；构建参数中的授权配置已隐藏。') from None
             raise
         shutil.copy2(output.with_suffix('.h'), headers / 'DuanjuCore.h')
         libraries.append((sdk, output, headers))
@@ -120,6 +120,8 @@ def main():
     parser.add_argument('--export-options', type=Path, help='使用自己的 Xcode 签名配置导出 IPA')
     parser.add_argument('--legacy-session', type=Path, help='将指定的黄果旧版会话内置到 IPA；不要提交会话文件')
     parser.add_argument('--require-legacy-session', action='store_true', help='没有有效黄果旧版会话时停止构建')
+    parser.add_argument('--source-access', type=Path, help='将指定站源授权内置到应用；不要提交授权文件')
+    parser.add_argument('--require-source-access', action='store_true', help='缺少站源授权时停止构建')
     add_variant_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)
@@ -127,7 +129,11 @@ def main():
     if session_flags and not options.all_sources:
         raise SystemExit('内置黄果旧版会话需要 --all-sources。')
     print('黄果旧版内置会话：' + ('已提供' if session_flags else '未提供'))
-    build_core(options.simulator, variant, session_flags)
+    access_flags = source_access_flags(options.source_access, options.require_source_access) if options.all_sources else ''
+    if not options.all_sources and (options.source_access or options.require_source_access):
+        raise SystemExit('内置站源授权需要 --all-sources。')
+    print('附件站源内置授权：' + ('已提供' if access_flags else '未提供'))
+    build_core(options.simulator, variant, session_flags + access_flags)
     if options.core_only:
         return
     flutter = shutil.which('flutter')

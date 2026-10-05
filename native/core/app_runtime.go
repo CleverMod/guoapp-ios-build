@@ -30,6 +30,7 @@ type Config struct {
 	HuangjuAPIURL    string
 	YeguoURL         string
 	YeguoAPIURL      string
+	YeguoWorkerURL   string
 	DSDURL           string
 	SoraniURL        string
 	SoraniAPIURL     string
@@ -73,6 +74,9 @@ type Downloader struct {
 	legacy                *legacyAPIClient
 	previewMu             sync.Mutex
 	previewSessions       map[string]*huangguoPreviewSession
+	attachedMu            sync.Mutex
+	attachedClients       map[string]*attachedClient
+	attachedAccess        map[string]attachedAccess
 }
 
 func defaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }
@@ -111,6 +115,7 @@ type nativeInput struct {
 	Action           string                  `json:"action"`
 	Directory        string                  `json:"directory"`
 	Source           string                  `json:"source"`
+	SourceAccess     json.RawMessage         `json:"sourceAccess"`
 	Page             int                     `json:"page"`
 	Query            string                  `json:"query"`
 	Category         string                  `json:"category"`
@@ -282,6 +287,7 @@ func newNativeEngine(directory string) (*nativeEngine, error) {
 		}}
 	engine := &nativeEngine{downloader: d, directory: directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	engine.loadResourceSettings()
+	d.loadAttachedAccess(directory)
 	d.loadRankingCache()
 	engine.loadCatalogCache()
 	engine.loadSourceRecords()
@@ -470,6 +476,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return map[string]any{"items": items}, err
 	case "sourceStatus":
 		return engine.sourceStatus(input.Source), nil
+	case "importSourceAccess":
+		return true, engine.importAttachedAccess(input.Source, input.SourceAccess)
 	case "sourceJob":
 		return engine.startSourceTask(input.Source, input.Command, input.Drama)
 	case "cancelSourceJob":
@@ -593,6 +601,24 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
+	if query != "" && (source == sourceYeguoWorker || attachedSearchSource(source)) {
+		var items []Drama
+		var more bool
+		var err error
+		if source == sourceYeguoWorker {
+			items, more, err = d.fetchYeguoWorkerCatalogPage(ctx, page, "", query)
+		} else {
+			items, more, err = d.fetchAttachedCatalogPage(ctx, source, page, "", query)
+		}
+		if err != nil {
+			return result, err
+		}
+		for _, drama := range items {
+			result.Items = append(result.Items, nativeNormalize(drama))
+		}
+		result.HasMore = more
+		return result, nil
+	}
 	if query != "" && isMaccmsSource(source) {
 		items, more, err := d.fetchMaccmsCatalogPage(ctx, source, page, "", query)
 		if err != nil {
@@ -692,6 +718,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items, result.HasMore, err = d.fetchHuangjuCatalogPage(ctx, page, category, "")
 	case sourceYeguo:
 		items, result.HasMore, err = d.fetchYeguoCatalogPage(ctx, page, category, "")
+	case sourceYeguoWorker:
+		items, result.HasMore, err = d.fetchYeguoWorkerCatalogPage(ctx, page, category, "")
 	case sourceDSD:
 		items, result.HasMore, err = d.fetchDSDCatalogPage(ctx, page, category, "")
 	case sourceSorani:
@@ -718,6 +746,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			items, result.HasMore, err = d.fetchMaccmsCatalogPage(ctx, source, page, category, "")
 		} else if isJSONVideoSource(source) {
 			items, result.HasMore, err = d.fetchJSONVideoCatalogPage(ctx, source, page, category, "")
+		} else if isAttachedSource(source) {
+			items, result.HasMore, err = d.fetchAttachedCatalogPage(ctx, source, page, category, "")
 		}
 	}
 	if err != nil && len(items) == 0 {
@@ -761,6 +791,8 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = engine.downloader.fetchHuangjuDetail(ctx, sourceID)
 	case sourceYeguo:
 		raw, chapters, err = engine.downloader.fetchYeguoDetail(ctx, sourceID)
+	case sourceYeguoWorker:
+		raw, chapters, err = engine.downloader.fetchYeguoWorkerDetail(ctx, sourceID)
 	case sourceDSD:
 		raw, chapters, err = engine.downloader.fetchDSDDetail(ctx, sourceID)
 	case sourceSorani:
@@ -774,6 +806,8 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 			raw, chapters, err = engine.downloader.fetchMaccmsDetail(ctx, source, sourceID)
 		} else if isJSONVideoSource(source) {
 			raw, chapters, err = engine.downloader.fetchJSONVideoDetail(ctx, source, sourceID, drama)
+		} else if isAttachedSource(source) {
+			raw, chapters, err = engine.downloader.fetchAttachedDetail(ctx, source, sourceID)
 		} else {
 			title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
 		}

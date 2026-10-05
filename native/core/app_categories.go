@@ -61,6 +61,8 @@ func validNativeCategory(source, category string) bool {
 		return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
 	case sourceYeguo:
 		return validYeguoCategory(category)
+	case sourceYeguoWorker:
+		return validYeguoWorkerCategory(category)
 	case sourceDSD:
 		return webProviderNumericID.MatchString(category)
 	case sourceSorani:
@@ -71,6 +73,10 @@ func validNativeCategory(source, category string) bool {
 		return validHanxiaoquanCategory(category)
 	case sourceXifu:
 		return webProviderNumericID.MatchString(category)
+	}
+	if p, ok := attachedProviderByID(source); ok {
+		_, valid := p.category(category)
+		return valid
 	}
 	return isMaccmsSource(source) && webProviderNumericID.MatchString(category)
 }
@@ -133,6 +139,8 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		}
 	case sourceSorani:
 		all = append(all, d.fetchSoraniCategories()...)
+	case sourceYeguoWorker:
+		all = append(all, yeguoWorkerCategories...)
 	case sourceGuipian:
 		all = append(all, d.fetchGuipianCategories()...)
 	case sourceHanxiaoquan:
@@ -143,6 +151,8 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 			categories, err = d.fetchMaccmsCategories(ctx, source)
 		} else if isJSONVideoSource(source) {
 			categories, err = d.fetchJSONVideoCategories(ctx, source)
+		} else if isAttachedSource(source) {
+			categories, err = d.fetchAttachedCategories(ctx, source)
 		} else {
 			return nil, errors.New("请选择有效站源")
 		}

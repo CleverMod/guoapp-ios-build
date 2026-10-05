@@ -28,6 +28,7 @@ EXCLUDED_DIRECTORIES = {
     'flutter-sdk', 'ndk', 'toolchains',
 }
 EXCLUDED_NAMES = {
+    'source_access.json',
     '.DS_Store', 'Thumbs.db', 'local.properties', 'key.properties',
     '.packages', 'GeneratedPluginRegistrant.java', 'Generated.xcconfig',
     'flutter_export_environment.sh', 'GeneratedPluginRegistrant.h', 'GeneratedPluginRegistrant.m',

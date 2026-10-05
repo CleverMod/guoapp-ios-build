@@ -250,7 +250,11 @@ func (d *Downloader) doPreparedCatalogRequest(request *http.Request, timeout tim
 	if prepare != nil {
 		prepare(request)
 	}
-	response, err := d.client.Do(request)
+	client := d.client
+	if override, ok := request.Context().Value(attachedRequestClientKey{}).(*http.Client); ok {
+		client = override
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		cancel()
 		release()

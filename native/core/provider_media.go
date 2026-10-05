@@ -37,6 +37,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
 	case sourceYeguo:
 		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
+	case sourceYeguoWorker:
+		configured, fallback = d.cfg.YeguoWorkerURL, yeguoWorkerBaseURL
 	case sourceDSD:
 		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	case sourceSorani:
@@ -52,7 +54,9 @@ func (d *Downloader) providerBaseURL(source string) string {
 	case sourceXifu:
 		fallback = xifuBaseURL
 	default:
-		if provider, valid := maccmsProviderByID(source); valid {
+		if provider, valid := attachedProviderByID(source); valid {
+			fallback = provider.base
+		} else if provider, valid := maccmsProviderByID(source); valid {
 			fallback = provider.baseURL
 		} else {
 			fallback = "https://d2pypzndaqisk.cloudfront.net"
@@ -81,8 +85,10 @@ func providerSourceForURL(raw string) string {
 	case host == "ygdj7.com" || host == "www.ygdj7.com" ||
 		host == "analyze.buxefaex.cc" || strings.HasSuffix(host, ".buxefaex.cc") ||
 		strings.HasSuffix(host, ".fzchosdi.cc") ||
-		host == "delta.ygrwdsgt.cc" || host == "yeguodj.com" || host == "www.yeguodj.com":
+		host == "delta.ygrwdsgt.cc":
 		return sourceYeguo
+	case host == "yeguodj.com" || host == "www.yeguodj.com":
+		return sourceYeguoWorker
 	case host == "dsd.com.se" || host == "www.dsd.com.se":
 		return sourceDSD
 	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
@@ -98,6 +104,9 @@ func providerSourceForURL(raw string) string {
 	case host == "minidrama-api.contentchina.com":
 		return sourceXifu
 	default:
+		if id := attachedSourceForHost(host); id != "" {
+			return id
+		}
 		return maccmsSourceForHost(host)
 	}
 }
@@ -145,6 +154,12 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceYeguo {
 		return d.resolveYeguoMedia(ctx, task)
+	}
+	if chapter.Source == sourceYeguoWorker {
+		return d.resolveYeguoWorkerMedia(ctx, task)
+	}
+	if isAttachedSource(chapter.Source) {
+		return d.resolveAttachedMedia(ctx, task)
 	}
 	if chapter.Source == sourceDSD {
 		return d.resolveDSDMedia(ctx, task)

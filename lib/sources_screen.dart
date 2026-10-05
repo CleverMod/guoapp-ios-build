@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -158,6 +161,39 @@ class _SourcesScreenState extends State<SourcesScreen> {
     }
   }
 
+  Future<void> _importAccess(SourceSite source) async {
+    final epoch = widget.store.profileEpoch;
+    try {
+      final picked = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (picked == null || !mounted || epoch != widget.store.profileEpoch) {
+        return;
+      }
+      final size = await picked.length();
+      if (size == null || size > 65536) {
+        throw const FormatException('请选择不超过 64 KB 的接口授权 JSON');
+      }
+      final bytes = await picked.readAsBytes();
+      if (!mounted || epoch != widget.store.profileEpoch) return;
+      final value = jsonDecode(utf8.decode(bytes));
+      if (value is! Map<String, dynamic>) {
+        throw const FormatException('接口授权 JSON 格式无效');
+      }
+      await widget.repository.importSourceAccess(source.id, value);
+      if (!mounted || epoch != widget.store.profileEpoch) return;
+      setState(() => _errors.remove(source.id));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('接口授权已保存，可重新更新站源')));
+    } catch (_) {
+      if (mounted && epoch == widget.store.profileEpoch) {
+        setState(() => _errors[source.id] = '导入接口授权失败，请检查文件格式和管理员权限');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.store,
@@ -276,6 +312,15 @@ class _SourcesScreenState extends State<SourcesScreen> {
                   icon: const Icon(Icons.sync_rounded),
                   label: const Text('更新'),
                 ),
+                if (SourceSite.attachedValues.any(
+                      (entry) => entry.id == source.id,
+                    ) &&
+                    widget.store.profile.admin)
+                  OutlinedButton.icon(
+                    onPressed: enabled ? () => _importAccess(source) : null,
+                    icon: const Icon(Icons.key_outlined),
+                    label: const Text('导入接口授权'),
+                  ),
                 OutlinedButton.icon(
                   key: ValueKey('check-${source.id}'),
                   onPressed: enabled ? () => _run(source, 'check') : null,

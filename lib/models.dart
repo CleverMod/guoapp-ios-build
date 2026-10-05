@@ -11,11 +11,34 @@ class SourceSite {
   bool get pagedSearch =>
       id == 'huangju' ||
       id == 'yeguo' ||
+      id == 'yeguo-worker' ||
       id == 'dsd' ||
       id == 'sorani' ||
       id == 'guipian' ||
       id == 'hanxiaoquan' ||
-      collectorValues.any((site) => site.id == id);
+      collectorValues.any((site) => site.id == id) ||
+      const {
+        "xiaobao",
+        "batvideo",
+        "honeypeach",
+        "weiguan",
+        "hema",
+        "shanhai",
+        "xingya",
+        "qimao",
+        "damang",
+        "xifan",
+        "qixing",
+        "niuniudj",
+        "souju",
+        "wuwu",
+        "huangdou2",
+        "chengguo",
+        "xiangjiao",
+        "dj91",
+        "duanjuone",
+        "yizk",
+      }.contains(id);
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
     'huangguo-video' || 'huangguoai' || 'cloudfront' => 'huangguo',
@@ -74,6 +97,39 @@ class SourceSite {
     SourceSite('modu', '魔都', '影视 · 分类 · 在线搜索'),
   ];
 
+  static const attachedValues = [
+    SourceSite("xiaobao", "小宝影院", "分类视频 · 在线搜索"),
+    SourceSite("batvideo", "蝙蝠视频", "分类视频 · 在线搜索"),
+    SourceSite("honeypeach", "暗黑蜜桃", "分类视频 · 在线搜索"),
+    SourceSite("weiguan", "围观", "分类视频 · 在线搜索"),
+    SourceSite("hema", "河马", "分类视频 · 在线搜索"),
+    SourceSite("shanhai", "山海", "分类视频 · 在线搜索"),
+    SourceSite("haokan", "好看", "分类视频 · 本地搜索"),
+    SourceSite("baidu", "百度", "分类视频 · 本地搜索"),
+    SourceSite("xingya", "星芽", "分类视频 · 在线搜索"),
+    SourceSite("qimao", "七猫", "分类视频 · 在线搜索"),
+    SourceSite("damang", "大芒", "分类视频 · 在线搜索"),
+    SourceSite("xifan", "西饭", "分类视频 · 在线搜索"),
+    SourceSite("xingxing", "星星", "分类视频 · 本地搜索"),
+    SourceSite("yimi", "薏米", "分类视频 · 本地搜索"),
+    SourceSite("wusheng", "悟圣", "分类视频 · 本地搜索"),
+    SourceSite("qixing", "七星", "分类视频 · 在线搜索"),
+    SourceSite("kuwo", "酷我", "分类视频 · 本地搜索"),
+    SourceSite("niuniudj", "牛牛短剧", "分类视频 · 在线搜索"),
+    SourceSite("souju", "搜剧AI", "分类视频 · 在线搜索"),
+    SourceSite("wuwu", "五五", "分类视频 · 在线搜索"),
+    SourceSite("huangdou2", "黄豆2", "分类视频 · 在线搜索"),
+    SourceSite("dj51", "51短剧", "分类视频 · 本地搜索"),
+    SourceSite("chengguo", "橙果", "分类视频 · 在线搜索"),
+    SourceSite("xiangjiao", "香蕉", "分类视频 · 在线搜索"),
+    SourceSite("huanggua", "黄瓜", "分类视频 · 本地搜索"),
+    SourceSite("kuangbiao", "狂飙", "分类视频 · 本地搜索"),
+    SourceSite("dj91", "91", "分类视频 · 在线搜索"),
+    SourceSite("md2048", "2048", "分类视频 · 本地搜索"),
+    SourceSite("duanjuone", "短剧one", "分类视频 · 在线搜索"),
+    SourceSite("yizk", "一直看", "分类视频 · 在线搜索"),
+  ];
+
   static const allValues = [
     hongguo,
     hanxiaoquan,
@@ -82,12 +138,14 @@ class SourceSite {
     SourceSite('huangdou', '黄豆', '精选短剧'),
     SourceSite('huangju', '剧果', '热门 · 最新 · 分类短剧'),
     SourceSite('yeguo', '野果', '分类短剧 · 在线搜索'),
+    SourceSite('yeguo-worker', '野果专线', '发现 · 排行 · 分类短剧'),
     dsd,
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
     ...collectorValues,
     SourceSite('xifu', '喜福', '分类短剧'),
+    ...attachedValues,
   ];
   static const values = allSourcesEnabled ? allValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);

@@ -1,4 +1,7 @@
 import base64
+import json
+import os
+from pathlib import Path
 from dataclasses import dataclass
 
 
@@ -41,3 +44,37 @@ class BuildVariant:
 def add_variant_argument(parser):
     parser.add_argument('--all-sources', action='store_true',
                         help='构建包含全部站源的真果鉴；默认构建仅红果的红果鉴')
+
+
+def source_access_flags(path=None, required=False):
+    local = Path(__file__).resolve().parents[1] / 'native' / 'private' / 'source_access.json'
+    raw = path.expanduser().read_bytes() if path else os.environ.get('GUOAPP_SOURCE_ACCESS', '').encode('utf-8')
+    if not raw and local.is_file():
+        raw = local.read_bytes()
+    if not raw:
+        if required:
+            raise SystemExit('缺少内置站源授权，请提供 --source-access 或 GUOAPP_SOURCE_ACCESS。')
+        return ''
+    if len(raw) > 256 * 1024:
+        raise SystemExit('站源授权配置超过 256 KiB。')
+    try:
+        config = json.loads(raw)
+        if not isinstance(config, dict) or not config:
+            raise ValueError()
+        for source, access in config.items():
+            if not isinstance(source, str) or not isinstance(access, dict):
+                raise ValueError()
+            if set(access) - {'headers', 'query', 'privateKey', 'signKey', 'deviceId'}:
+                raise ValueError()
+            for key in ('headers', 'query'):
+                values = access.get(key, {})
+                if not isinstance(values, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in values.items()):
+                    raise ValueError()
+                if key == 'headers' and any('\r' in k + v or '\n' in k + v for k, v in values.items()):
+                    raise ValueError()
+            if any(not isinstance(access.get(key, ''), str) for key in ('privateKey', 'signKey', 'deviceId')):
+                raise ValueError()
+    except (ValueError, TypeError):
+        raise SystemExit('站源授权配置格式无效；实际内容已隐藏。') from None
+    encoded = base64.b64encode(json.dumps(config, ensure_ascii=False, separators=(',', ':')).encode('utf-8')).decode('ascii')
+    return ' -X duanjuapp/native/core.bundledAttachedAccessBase64=' + encoded

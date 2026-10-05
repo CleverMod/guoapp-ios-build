@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import BuildVariant, add_variant_argument, source_access_flags
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -14,6 +14,7 @@ parser.add_argument('--abi', action='append', choices=['arm64-v8a', 'armeabi-v7a
 add_variant_argument(parser)
 options = parser.parse_args()
 variant = BuildVariant(options.all_sources)
+access_flags = source_access_flags() if options.all_sources else ''
 
 environment = os.environ.copy()
 environment.setdefault('GOPROXY', 'https://goproxy.cn,direct')
@@ -37,9 +38,11 @@ def build(goos, architecture, compiler, output, extra=None):
     if extra:
         build_env.update(extra)
     print('Building ' + str(output.relative_to(root)), flush=True)
-    subprocess.run([go, 'build', '-trimpath', '-buildmode=c-shared',
-                    '-ldflags=' + variant.linker_flags, '-o', str(output), './bridge'],
-                   cwd=root / 'native', env=build_env, check=True)
+    result = subprocess.run([go, 'build', '-trimpath', '-buildmode=c-shared',
+                    '-ldflags=' + variant.linker_flags + access_flags, '-o', str(output), './bridge'],
+                   cwd=root / 'native', env=build_env)
+    if result.returncode:
+        raise SystemExit(f'原生核心编译失败，退出码 {result.returncode}；授权配置已隐藏。')
 
 if options.platform == 'android':
     sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')

@@ -75,7 +75,6 @@ func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
 		"https://some-line.buxefaex.cc/drama/video/1/",
 		"https://some-backup.fzchosdi.cc/drama/video/1/",
 		"https://delta.ygrwdsgt.cc/",
-		"https://yeguodj.com/",
 		"https://ygdj7.com/",
 	} {
 		if got := providerSourceForURL(address); got != sourceYeguo {
@@ -85,11 +84,15 @@ func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
 	for _, alias := range []string{
 		"analyze.buxefaex.cc",
 		"delta.ygrwdsgt.cc",
-		"yeguodj.com",
 		"ygdj7.com",
 	} {
 		if got := canonicalProviderSource(alias); got != sourceYeguo {
 			t.Fatalf("yeguo source alias was not canonicalized: %s -> %s", alias, got)
+		}
+	}
+	for _, address := range []string{"https://yeguodj.com/", "https://www.yeguodj.com/"} {
+		if providerSourceForURL(address) != sourceYeguoWorker {
+			t.Fatal("restored worker alias mismatch", address)
 		}
 	}
 }

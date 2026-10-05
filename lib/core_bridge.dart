@@ -125,6 +125,10 @@ abstract class AppRepository {
     bool force = false,
   }) async => const [CatalogCategory.all];
   bool get supportsSourceManagement => false;
+  Future<void> importSourceAccess(
+    String source,
+    Map<String, dynamic> value,
+  ) async => throw AppFailure('当前环境不支持接口授权');
   Future<SourceStatus> sourceStatus(String source) async =>
       SourceStatus.fromJson({'source': source});
   Future<SourceStatus> startSourceJob(
@@ -423,6 +427,18 @@ class NativeRepository extends AppRepository {
   bool get supportsSourceManagement => true;
 
   @override
+  Future<void> importSourceAccess(
+    String source,
+    Map<String, dynamic> value,
+  ) async {
+    await _call({
+      'action': 'importSourceAccess',
+      'source': source,
+      'sourceAccess': value,
+    });
+  }
+
+  @override
   Future<List<RankingBoard>> rankingBoards() async {
     final result = await _call({'action': 'rankingBoards'});
     return [
@@ -589,8 +605,14 @@ class NativeRepository extends AppRepository {
         'sourceStatus',
         'sourceJob',
         'cancelSourceJob',
+        'importSourceAccess',
       }.contains(action)) {
         _authorize(input['source'] as String);
+      }
+      if (action == 'importSourceAccess' &&
+          access != null &&
+          !access!.profile.admin) {
+        throw AppFailure('仅管理员可以导入接口授权');
       }
       if ({
         'cover',
