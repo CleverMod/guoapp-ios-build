@@ -3,16 +3,25 @@ class LiveChannel {
     required this.id,
     required this.name,
     required this.group,
+    this.epgId = '',
+    this.epgUrl = '',
+    this.catchupDays = 0,
   });
 
   final String id;
   final String name;
   final String group;
+  final String epgId;
+  final String epgUrl;
+  final int catchupDays;
 
   factory LiveChannel.fromJson(Map<String, dynamic> json) => LiveChannel(
     id: json['id'] as String,
     name: json['name'] as String,
     group: json['group'] as String,
+    epgId: json['epgId'] as String? ?? '',
+    epgUrl: json['epgUrl'] as String? ?? '',
+    catchupDays: json['catchupDays'] as int? ?? 0,
   );
 }
 

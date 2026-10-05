@@ -69,6 +69,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   bool _fullscreen = false;
   bool _channelPicker = false;
   bool _volumePicker = false;
+  bool _catchupPicker = false;
+  bool _seeking = false;
+  DateTime? _catchupStart;
+  DateTime? _catchupEnd;
+  double? _seekPosition;
   bool _controlsVisible = true;
   bool _recovering = false;
   double _volume = 100;
@@ -116,6 +121,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     _subscriptions.add(
       _player.stream.position.listen((position) {
         if (_closed) return;
+        if (_catchupStart != null && mounted) setState(() {});
         if (position != _lastPosition) {
           final advance = position - _lastPosition;
           _lastPosition = position;
@@ -145,7 +151,22 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     );
     _subscriptions.add(
       _player.stream.completed.listen((completed) {
-        if (completed && _acceptErrors && !_closed) _recover('直播流已中断');
+        if (!completed || !_acceptErrors || _closed) return;
+        if (_catchupStart != null) {
+          _retryTimer?.cancel();
+          _errorTimer?.cancel();
+          _acceptErrors = false;
+          _playIntent = false;
+          setState(() => _recovering = false);
+          _showControls();
+        } else {
+          _recover('直播流已中断');
+        }
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.duration.listen((_) {
+        if (!_closed && mounted && _catchupStart != null) setState(() {});
       }),
     );
     _subscriptions.add(
@@ -174,6 +195,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     }
     _healthTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!_loading &&
+          !_seeking &&
           _error == null &&
           _playIntent &&
           _foreground &&
@@ -220,7 +242,9 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     if (state == AppLifecycleState.resumed) {
       final wasForeground = _foreground;
       _foreground = true;
-      if (!wasForeground && _playIntent && _allowed) _load(_channel);
+      if (!wasForeground && _playIntent && _allowed) {
+        _load(_channel, automatic: true);
+      }
     } else {
       _foreground = false;
       _generation++;
@@ -238,8 +262,22 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     } catch (_) {}
   }
 
-  void _load(LiveChannel channel, {bool automatic = false}) {
+  void _load(
+    LiveChannel channel, {
+    bool automatic = false,
+    DateTime? start,
+    DateTime? end,
+  }) {
     if (_closed || !_allowed) return;
+    final replayStart = automatic && channel.id == _channel.id
+        ? _catchupStart
+        : start;
+    final replayEnd = automatic && channel.id == _channel.id
+        ? _catchupEnd
+        : end;
+    final resume = automatic && replayStart != null
+        ? _lastPosition
+        : Duration.zero;
     final ticket = ++_generation;
     _retryTimer?.cancel();
     _errorTimer?.cancel();
@@ -249,6 +287,10 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     _playIntent = true;
     setState(() {
       _channel = channel;
+      _catchupStart = replayStart;
+      _catchupEnd = replayEnd;
+      _seeking = false;
+      _seekPosition = null;
       _loading = true;
       _recovering = automatic;
       _error = null;
@@ -259,7 +301,12 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       final previous = _playback;
       LivePlayback? playback;
       try {
-        playback = await widget.repository.openLive(channel.id);
+        playback = await widget.repository.openLive(
+          channel.id,
+          start: replayStart,
+          end: replayEnd,
+          automatic: automatic,
+        );
         if (_closed || ticket != _generation || !_allowed) {
           await _release(playback);
           return;
@@ -275,7 +322,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         }
         DiaryService.add('[Live] 打开频道 ${channel.id}，第 ${_retries + 1} 次取流');
         await _player.open(
-          Media(playback.url, httpHeaders: playback.headers),
+          Media(
+            playback.url,
+            httpHeaders: playback.headers,
+            start: resume > Duration.zero ? resume : null,
+          ),
           play: _foreground && _playIntent,
         );
         if (_closed || ticket != _generation || !_allowed) {
@@ -393,8 +444,155 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         _showControls();
       }
     } else {
-      _load(_channel);
+      if (_catchupStart != null && _playback != null) {
+        final ticket = _generation;
+        if (_player.state.completed &&
+            _player.state.position >= _player.state.duration) {
+          await _seekReplay(0);
+        }
+        if (_closed || !_allowed || ticket != _generation) return;
+        _playIntent = true;
+        _acceptErrors = true;
+        _lastProgress = DateTime.now();
+        try {
+          await _player.play();
+          if (mounted && !_closed && ticket == _generation) setState(() {});
+        } catch (_) {
+          if (!_closed && ticket == _generation) {
+            _queueRecovery('回看暂时无法继续，请重新取流');
+          }
+        }
+      } else {
+        _load(_channel);
+      }
     }
+  }
+
+  Future<void> _chooseCatchup() async {
+    if (_catchupPicker || !_allowed || _channel.catchupDays == 0) return;
+    _catchupPicker = true;
+    _controlsTimer?.cancel();
+    final channel = _channel;
+    final ticket = _generation;
+    try {
+      final now = DateTime.now();
+      final first = now.subtract(Duration(days: channel.catchupDays));
+      final previous = _catchupStart ?? now.subtract(const Duration(hours: 1));
+      final initial = previous.isBefore(first)
+          ? first
+          : previous.isAfter(now)
+          ? now
+          : previous;
+      final date = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: first,
+        lastDate: now,
+        helpText: '选择回看日期',
+      );
+      if (date == null || !mounted || ticket != _generation || !_allowed) {
+        return;
+      }
+      final clock = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(initial),
+        helpText: '选择回看开始时间',
+      );
+      if (clock == null || !mounted || ticket != _generation || !_allowed) {
+        return;
+      }
+      final start = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        clock.hour,
+        clock.minute,
+      );
+      final current = DateTime.now();
+      if (!start.isBefore(current) ||
+          start.isBefore(
+            current.subtract(Duration(days: channel.catchupDays)),
+          )) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请选择过去七天内的回看时间')));
+        return;
+      }
+      final limit = start.add(const Duration(hours: 2));
+      _load(
+        channel,
+        start: start,
+        end: limit.isAfter(current) ? current : limit,
+      );
+    } finally {
+      _catchupPicker = false;
+      _showControls();
+    }
+  }
+
+  Future<void> _seekReplay(double position) async {
+    if (_closed || !_allowed || _catchupStart == null) return;
+    final ticket = _generation;
+    _operations = _operations.catchError((Object _) {}).then((_) async {
+      if (_closed || ticket != _generation || !_allowed) return;
+      try {
+        await _player.seek(Duration(milliseconds: position.round()));
+        _lastProgress = DateTime.now();
+      } catch (_) {
+        if (mounted && !_closed && ticket == _generation) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('回看跳转失败，请重试')));
+        }
+      } finally {
+        if (mounted && !_closed && ticket == _generation) {
+          setState(() {
+            _seeking = false;
+            _seekPosition = null;
+          });
+          _showControls();
+        }
+      }
+    });
+    await _operations;
+  }
+
+  Widget _replayBar() {
+    final duration = _player.state.duration.inMilliseconds.toDouble();
+    final maximum = duration > 0 ? duration : 1.0;
+    final position =
+        (_seekPosition ?? _player.state.position.inMilliseconds.toDouble())
+            .clamp(0.0, maximum);
+    final clock = _catchupStart!.add(Duration(milliseconds: position.round()));
+    String pad(int number) => number.toString().padLeft(2, '0');
+    return Container(
+      key: const ValueKey('live-replay-progress'),
+      color: Colors.black.withValues(alpha: .65),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          Text(
+            '回看 ${pad(clock.month)}-${pad(clock.day)} ${pad(clock.hour)}:${pad(clock.minute)}',
+          ),
+          Expanded(
+            child: Slider(
+              value: position,
+              max: maximum,
+              onChanged: !_loading && _allowed && duration > 0
+                  ? (value) {
+                      _controlsTimer?.cancel();
+                      setState(() {
+                        _seeking = true;
+                        _seekPosition = value;
+                      });
+                    }
+                  : null,
+              onChangeEnd: (value) => unawaited(_seekReplay(value)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _receiveVolume(double value) {
@@ -541,7 +739,9 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         _loading ||
         _error != null ||
         _channelPicker ||
-        _volumePicker) {
+        _volumePicker ||
+        _catchupPicker ||
+        _seeking) {
       return;
     }
     _controlsTimer = Timer(const Duration(seconds: 4), () {
@@ -549,6 +749,8 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           mounted &&
           !_channelPicker &&
           !_volumePicker &&
+          !_catchupPicker &&
+          !_seeking &&
           _playIntent &&
           _error == null) {
         _surfaceFocus.requestFocus();
@@ -594,7 +796,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
 
   Widget _controlBar() => LayoutBuilder(
     builder: (context, constraints) {
-      final buttonWidth = ((constraints.maxWidth - 16) / 7).clamp(36.0, 48.0);
+      final buttonCount = _channel.catchupDays > 0 ? 8 : 7;
+      final buttonWidth = ((constraints.maxWidth - 16) / buttonCount).clamp(
+        32.0,
+        48.0,
+      );
       Widget button(Widget child) =>
           SizedBox(width: buttonWidth, height: 48, child: child);
       return Container(
@@ -614,7 +820,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
               IconButton(
                 focusNode: _playFocus,
                 autofocus: AppLayout.isTelevision(context),
-                tooltip: _playIntent ? '暂停' : '播放直播',
+                tooltip: _playIntent
+                    ? '暂停'
+                    : _catchupStart == null
+                    ? '播放直播'
+                    : '播放回看',
                 onPressed: _allowed && !_loading ? _togglePlayback : null,
                 icon: Icon(_playIntent ? Icons.pause : Icons.play_arrow),
               ),
@@ -629,7 +839,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
             Expanded(
               child: constraints.maxWidth >= 600
                   ? Text(
-                      '直播 · ${_channel.name}',
+                      '${_catchupStart == null ? '直播' : '回看'} · ${_channel.name}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     )
@@ -642,6 +852,14 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                 icon: const Icon(Icons.list),
               ),
             ),
+            if (_channel.catchupDays > 0)
+              button(
+                IconButton(
+                  tooltip: '七天回看',
+                  onPressed: _allowed && !_loading ? _chooseCatchup : null,
+                  icon: const Icon(Icons.history),
+                ),
+              ),
             button(
               IconButton(
                 tooltip: '回到直播',
@@ -716,20 +934,20 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                 child: Center(child: CircularProgressIndicator()),
               ),
             if (_recovering && !_loading)
-              const Positioned(
+              Positioned(
                 top: 12,
                 right: 12,
                 child: IgnorePointer(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Color(0x99000000),
                       borderRadius: BorderRadius.all(Radius.circular(8)),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(8),
                       child: Text(
-                        '正在恢复直播…',
-                        style: TextStyle(color: Colors.white),
+                        _catchupStart == null ? '正在恢复直播…' : '正在恢复回看…',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
                   ),
@@ -754,7 +972,13 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                       ),
                       const SizedBox(height: 12),
                       FilledButton(
-                        onPressed: _allowed ? () => _load(_channel) : null,
+                        onPressed: _allowed
+                            ? () => _load(
+                                _channel,
+                                start: _catchupStart,
+                                end: _catchupEnd,
+                              )
+                            : null,
                         child: const Text('重新取流'),
                       ),
                     ],
@@ -771,7 +995,13 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                     key: const ValueKey('live-controls'),
                     opacity: _controlsVisible ? 1 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: _controlBar(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_catchupStart != null) _replayBar(),
+                        _controlBar(),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -871,8 +1101,10 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                                   ),
                                 ],
                               ),
-                              const Text(
-                                '暂停后继续将回到直播。支持 PageUp / PageDown 换台、空格播放 / 暂停。',
+                              Text(
+                                _catchupStart == null
+                                    ? '暂停后继续将回到直播。支持 PageUp / PageDown 换台、空格播放 / 暂停。'
+                                    : '回看可拖动进度条；暂停后继续从当前位置播放，点击「回到直播」返回当前节目。',
                                 textAlign: TextAlign.center,
                               ),
                             ],

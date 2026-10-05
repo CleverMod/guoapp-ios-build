@@ -15,7 +15,7 @@ import 'fixtures.dart';
 import 'player_fixtures.dart';
 
 const liveFixtureChannels = [
-  LiveChannel(id: 'cctv6', name: 'CCTV-6 电影', group: '央视'),
+  LiveChannel(id: 'cctv6', name: 'CCTV-6 电影', group: '央视', catchupDays: 7),
   LiveChannel(id: 'cctv1', name: 'CCTV-1 综合', group: '央视'),
   LiveChannel(id: 'cctv2', name: 'CCTV-2 财经', group: '央视'),
 ];
@@ -26,6 +26,7 @@ class LiveFixtureRepository extends FixtureRepository {
   Completer<LivePlayback>? pending;
   final active = <String>{};
   final failedChannels = <String>{};
+  final liveRequests = <({DateTime? start, DateTime? end, bool automatic})>[];
 
   LivePlayback playback(String channel) {
     final session = 'live-$opens';
@@ -37,8 +38,14 @@ class LiveFixtureRepository extends FixtureRepository {
   }
 
   @override
-  Future<LivePlayback> openLive(String channel) async {
+  Future<LivePlayback> openLive(
+    String channel, {
+    DateTime? start,
+    DateTime? end,
+    bool automatic = false,
+  }) async {
     opens++;
+    liveRequests.add((start: start, end: end, automatic: automatic));
     if (failedChannels.contains(channel)) {
       throw AppFailure('synthetic channel unavailable');
     }
@@ -105,6 +112,147 @@ void main() {
     expect(repository.active, isEmpty);
     expect(tester.takeException(), isNull);
   }
+
+  Future<void> chooseReplay(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('七天回看'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(DatePickerDialog),
+            matching: find.byType(TextButton),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(TimePickerDialog),
+            matching: find.byType(TextButton),
+          )
+          .last,
+    );
+    await settle(tester);
+  }
+
+  test('live channel metadata preserves replay support and EPG identity', () {
+    final channel = LiveChannel.fromJson({
+      'id': 'cctv1',
+      'name': 'CCTV-1 综合',
+      'group': '央视频道',
+      'epgId': 'CCTV1',
+      'epgUrl': 'https://live.fanmingming.com/e.xml',
+      'catchupDays': 7,
+    });
+    expect(channel.catchupDays, 7);
+    expect(channel.epgId, 'CCTV1');
+    expect(channel.epgUrl, 'https://live.fanmingming.com/e.xml');
+    expect(
+      LiveChannel.fromJson({
+        'id': 'cctv4k',
+        'name': 'CCTV-4K',
+        'group': '央视频道',
+      }).catchupDays,
+      0,
+    );
+  });
+
+  testWidgets('replay pauses, seeks and completes without reopening live', (
+    tester,
+  ) async {
+    final repository = LiveFixtureRepository();
+    final player = ScriptedPlayer();
+    await mount(tester, repository, player);
+    await chooseReplay(tester);
+    final request = repository.liveRequests.last;
+    expect(request.start, isNotNull);
+    expect(request.end!.isAfter(request.start!), isTrue);
+    expect(
+      request.end!.difference(request.start!).inSeconds,
+      lessThanOrEqualTo(7200),
+    );
+    expect(find.byKey(const ValueKey('live-replay-progress')), findsOneWidget);
+    await tester.tap(find.byTooltip('暂停'));
+    await settle(tester);
+    final slider = tester.widget<Slider>(
+      find.descendant(
+        of: find.byKey(const ValueKey('live-replay-progress')),
+        matching: find.byType(Slider),
+      ),
+    );
+    slider.onChanged!(45000);
+    slider.onChangeEnd!(45000);
+    await settle(tester);
+    expect(player.state.position, const Duration(seconds: 45));
+    await tester.tap(find.byTooltip('播放回看'));
+    await settle(tester);
+    expect(repository.opens, 2);
+    expect(player.state.position, const Duration(seconds: 45));
+    player.finishEpisode();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 20));
+    expect(repository.opens, 2);
+    expect(find.byTooltip('播放回看'), findsOneWidget);
+    expect(find.text('重新取流'), findsNothing);
+    await unmount(tester, repository, player);
+  });
+
+  testWidgets('replay recovery retains its time window and position', (
+    tester,
+  ) async {
+    final repository = LiveFixtureRepository();
+    final player = ScriptedPlayer();
+    await mount(tester, repository, player);
+    await chooseReplay(tester);
+    final replay = repository.liveRequests.last;
+    await player.seek(const Duration(seconds: 45));
+    await tester.pump();
+    player.fail();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 8));
+    await tester.pump(const Duration(seconds: 1));
+    await settle(tester);
+    expect(repository.liveRequests.last.start, replay.start);
+    expect(repository.liveRequests.last.end, replay.end);
+    expect(repository.liveRequests.last.automatic, isTrue);
+    expect(player.opened.last.start, const Duration(seconds: 45));
+    await tester.tap(find.byTooltip('回到直播'));
+    await settle(tester);
+    expect(repository.liveRequests.last.start, isNull);
+    expect(repository.liveRequests.last.end, isNull);
+    expect(repository.liveRequests.last.automatic, isFalse);
+    expect(find.byKey(const ValueKey('live-replay-progress')), findsNothing);
+    expect(repository.active, hasLength(1));
+    await unmount(tester, repository, player);
+  });
+
+  testWidgets('manual replay retry preserves the chosen time window', (
+    tester,
+  ) async {
+    final repository = LiveFixtureRepository();
+    final player = ScriptedPlayer();
+    await mount(tester, repository, player);
+    await chooseReplay(tester);
+    final replay = repository.liveRequests.last;
+    repository.failedChannels.add(liveFixtureChannels.first.id);
+    player.fail();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 8));
+    for (final delay in [1, 2, 4]) {
+      await tester.pump(Duration(seconds: delay));
+      await settle(tester);
+    }
+    expect(find.text('重新取流'), findsOneWidget);
+    repository.failedChannels.clear();
+    await tester.tap(find.text('重新取流'));
+    await settle(tester);
+    expect(repository.liveRequests.last.start, replay.start);
+    expect(repository.liveRequests.last.end, replay.end);
+    expect(repository.liveRequests.last.automatic, isFalse);
+    expect(find.byKey(const ValueKey('live-replay-progress')), findsOneWidget);
+    await unmount(tester, repository, player);
+  });
 
   testWidgets(
     'live controls stay on one row and hide until the video is tapped',

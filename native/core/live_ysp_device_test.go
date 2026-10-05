@@ -174,6 +174,7 @@ func TestYSPDeviceRenewalAndCancellationReleaseControl(t *testing.T) {
 	device := newYSPDeviceResolver(client, t.TempDir())
 	old := &yspDeviceSession{created: time.Now().Add(-yspDeviceSessionTTL + 4*time.Minute), lastBeat: time.Now()}
 	device.session = old
+	device.lastWarm = time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	device.pulse(ctx)

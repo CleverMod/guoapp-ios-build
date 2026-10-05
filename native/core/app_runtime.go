@@ -384,13 +384,13 @@ func nativeDispatch(input nativeInput) (any, error) {
 	}
 	switch input.Action {
 	case "liveChannels":
-		return map[string]any{"items": yspChannels}, nil
+		return map[string]any{"items": yspLiveChannels()}, nil
 	case "openLive":
 		live, err := engine.liveServer()
 		if err != nil {
 			return nil, err
 		}
-		return live.open(ctx, input.Source)
+		return live.openWithOptions(ctx, input.Source, input.Query, input.Force)
 	case "releaseLive":
 		engine.liveMu.Lock()
 		live := engine.live

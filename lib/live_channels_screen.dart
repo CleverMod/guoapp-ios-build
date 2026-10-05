@@ -178,7 +178,11 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
                                   child: ListTile(
                                     leading: const Icon(Icons.live_tv_rounded),
                                     title: Text(channel.name),
-                                    subtitle: Text(channel.group),
+                                    subtitle: Text(
+                                      channel.catchupDays > 0
+                                          ? '${channel.group} · ${channel.catchupDays}天回看'
+                                          : channel.group,
+                                    ),
                                     trailing: const Icon(
                                       Icons.play_arrow_rounded,
                                     ),

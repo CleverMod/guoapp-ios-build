@@ -77,6 +77,7 @@ type yspDeviceResolver struct {
 	failures     map[string]yspDeviceFailure
 	sessionRetry time.Time
 	lastRequest  time.Time
+	lastWarm     time.Time
 	cancel       context.CancelFunc
 }
 
@@ -183,11 +184,67 @@ func (device *yspDeviceResolver) pulse(ctx context.Context) {
 	}
 	device.mu.Lock()
 	for id, entry := range device.entries {
-		if time.Since(entry.lastUsed) > 2*time.Minute {
+		if !yspWarmChannel(id) && time.Since(entry.lastUsed) > 2*time.Minute {
 			delete(device.entries, id)
 		}
 	}
 	device.mu.Unlock()
+	device.keepWarm(ctx, session)
+}
+
+func yspWarmChannel(channel string) bool {
+	return channel == "cctv4k" || channel == "cctv164k" || channel == "cctv8k"
+}
+
+func (device *yspDeviceResolver) keepWarm(ctx context.Context, session *yspDeviceSession) {
+	device.mu.Lock()
+	if session == nil || device.session != session || time.Since(device.lastWarm) < 30*time.Second {
+		device.mu.Unlock()
+		return
+	}
+	device.lastWarm = time.Now()
+	device.mu.Unlock()
+	for _, channel := range []string{"cctv4k", "cctv164k", "cctv8k"} {
+		if ctx.Err() != nil {
+			return
+		}
+		device.mu.Lock()
+		if device.session != session {
+			device.mu.Unlock()
+			return
+		}
+		entry, exists := device.entries[channel]
+		failure := device.failures[channel]
+		device.mu.Unlock()
+		if time.Now().Before(failure.retryAt) || exists && time.Until(entry.expires) > 3*time.Minute && entry.headers["APPSIGN"] != "" && entry.headers["UID"] != "" {
+			continue
+		}
+		fresh, err := device.resolveChannel(ctx, session, yspDeviceLiveIDs[channel])
+		device.mu.Lock()
+		if device.session != session || errors.Is(ctx.Err(), context.Canceled) {
+			device.mu.Unlock()
+			return
+		}
+		if err != nil {
+			device.recordFailureLocked(channel)
+			if yspDeviceInvalidates(err) {
+				device.session = nil
+				device.sessionRetry = time.Now().Add(30 * time.Second)
+				device.mu.Unlock()
+				return
+			}
+		} else {
+			fresh.lastUsed = time.Now()
+			device.entries[channel] = fresh
+		}
+		device.mu.Unlock()
+	}
+}
+
+func (device *yspDeviceResolver) reopen(channel string) {
+	device.mu.Lock()
+	defer device.mu.Unlock()
+	delete(device.failures, channel)
 }
 
 func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel) (yspDeviceEntry, error) {

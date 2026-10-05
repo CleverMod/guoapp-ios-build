@@ -183,6 +183,6 @@ func (live *yspLiveServer) serveMedia(w http.ResponseWriter, r *http.Request, se
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(response.StatusCode)
 	if r.Method == "GET" {
-		io.CopyBuffer(w, response.Body, make([]byte, 64<<10))
+		io.CopyBuffer(w, response.Body, make([]byte, 256<<10))
 	}
 }

@@ -70,8 +70,12 @@ class AppFailure implements Exception {
 abstract class AppRepository {
   Future<List<LiveChannel>> liveChannels() async =>
       throw AppFailure('当前环境不支持直播');
-  Future<LivePlayback> openLive(String channel) async =>
-      throw AppFailure('当前环境不支持直播');
+  Future<LivePlayback> openLive(
+    String channel, {
+    DateTime? start,
+    DateTime? end,
+    bool automatic = false,
+  }) async => throw AppFailure('当前环境不支持直播');
   Future<void> releaseLive(String session) async {}
   Future<Map<String, dynamic>> lan(
     String command,
@@ -208,10 +212,26 @@ class NativeRepository extends AppRepository {
   }
 
   @override
-  Future<LivePlayback> openLive(String channel) async {
+  Future<LivePlayback> openLive(
+    String channel, {
+    DateTime? start,
+    DateTime? end,
+    bool automatic = false,
+  }) async {
     if (!allSourcesEnabled) throw AppFailure('当前版本不包含直播');
     return LivePlayback.fromJson(
-      await _call({'action': 'openLive', 'source': channel}),
+      await _call({
+        'action': 'openLive',
+        'source': channel,
+        'force': !automatic,
+        if (start != null)
+          'query': Uri(
+            queryParameters: {
+              'utc': '${start.millisecondsSinceEpoch ~/ 1000}',
+              if (end != null) 'lutc': '${end.millisecondsSinceEpoch ~/ 1000}',
+            },
+          ).query,
+      }),
     );
   }
 

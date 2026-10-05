@@ -336,12 +336,16 @@ func yspRequestClient(ctx context.Context, client *http.Client, method, address 
 }
 
 func (live *yspLiveServer) timeshift(ctx context.Context, ch yspChannel) (string, error) {
-	w := &yspWriter{}
 	now := time.Now().Unix()
+	return live.timeshiftRange(ctx, ch, now-300, now)
+}
+
+func (live *yspLiveServer) timeshiftRange(ctx context.Context, ch yspChannel, start, end int64) (string, error) {
+	w := &yspWriter{}
 	w.text(ch.PID, 0)
 	w.text(ch.SID, 1)
-	w.number(now-300, 2)
-	w.number(now, 3)
+	w.number(start, 2)
+	w.number(end, 3)
 	w.text(ch.Definition, 4)
 	b, _, err := live.request(ctx, "POST", "https://jacc.ysp.cctv.cn", yspPacket(w.Bytes(), live.guid, time.Now().UnixMilli()&0x7fffffff), map[string]string{"Content-Type": "application/octet-stream"})
 	if err != nil {
