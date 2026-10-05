@@ -76,6 +76,7 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
   Widget build(BuildContext context) {
     final allowed = !widget.store.locked && widget.store.profileEpoch == _epoch;
     final television = AppLayout.isTelevision(context);
+    final groups = ['全部', ..._channels.map((channel) => channel.group).toSet()];
     final channels = _channels
         .where(
           (channel) =>
@@ -122,14 +123,7 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
-                        for (final group in [
-                          '全部',
-                          '央视',
-                          'CGTN',
-                          '剧场',
-                          '卫视',
-                          '其他',
-                        ])
+                        for (final group in groups)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: ChoiceChip(
