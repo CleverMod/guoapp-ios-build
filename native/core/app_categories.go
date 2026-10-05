@@ -69,10 +69,10 @@ func validNativeCategory(source, category string) bool {
 		return validGuipianCategory(category)
 	case sourceHanxiaoquan:
 		return validHanxiaoquanCategory(category)
-	case sourceLiangzi, sourceJciyuan:
+	case sourceXiaopingguo, sourceXifu, sourceHongdou:
 		return webProviderNumericID.MatchString(category)
 	}
-	return false
+	return isMaccmsSource(source) && webProviderNumericID.MatchString(category)
 }
 
 func (engine *nativeEngine) nativeCategories(ctx context.Context, source string, force bool) ([]nativeCategory, error) {
@@ -137,14 +137,18 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		all = append(all, d.fetchGuipianCategories()...)
 	case sourceHanxiaoquan:
 		all = append(all, d.fetchHanxiaoquanCategories()...)
-	case sourceLiangzi, sourceJciyuan:
+	default:
 		var categories []nativeCategory
-		categories, err = d.fetchMaccmsCategories(ctx, source)
+		if isMaccmsSource(source) {
+			categories, err = d.fetchMaccmsCategories(ctx, source)
+		} else if isJSONVideoSource(source) {
+			categories, err = d.fetchJSONVideoCategories(ctx, source)
+		} else {
+			return nil, errors.New("请选择有效站源")
+		}
 		if err == nil {
 			all = append(all, categories...)
 		}
-	default:
-		return nil, errors.New("请选择有效站源")
 	}
 	if err != nil {
 		return nil, err

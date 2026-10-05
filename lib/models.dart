@@ -15,8 +15,9 @@ class SourceSite {
       id == 'sorani' ||
       id == 'guipian' ||
       id == 'hanxiaoquan' ||
-      id == 'liangzi' ||
-      id == 'jciyuan';
+      id == 'xiaopingguo' ||
+      id == 'hongdou' ||
+      collectorValues.any((site) => site.id == id);
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
     'huangguo-video' || 'huangguoai' || 'cloudfront' => 'huangguo',
@@ -40,6 +41,41 @@ class SourceSite {
     '韩剧 · 韩国电影 · 综艺动漫',
   );
 
+  static const collectorValues = [
+    SourceSite('liangzi', '量子', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('jciyuan', '囧次元', '动漫 · 在线搜索'),
+    SourceSite('zy1080', '1080资源', '电影 · 剧集 · 在线搜索'),
+    SourceSite('zy155', '155资源', '影视 · 分类 · 在线搜索'),
+    SourceSite('uku', 'U酷', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('ikun', 'ikun', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('guangsu', '光速', '电影 · 剧集 · 在线搜索'),
+    SourceSite('dazhong', '大众资源', '影视 · 分类 · 在线搜索'),
+    SourceSite('tianya', '天涯', '影视 · 分类 · 在线搜索'),
+    SourceSite('ruyi', '如意影视', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('jiuyao', '就要', '电影 · 剧集 · 在线搜索'),
+    SourceSite('xinlang', '新浪', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('wujin', '无尽', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('wushuiyin', '无水印', '影视 · 分类 · 在线搜索'),
+    SourceSite('baofeng', '暴风', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('zuida', '最大', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('jisu', '极速', '电影 · 剧集 · 在线搜索'),
+    SourceSite('yinghua', '樱花', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('niuniu', '牛牛', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('dytt', '电影天堂', '电影 · 剧集 · 在线搜索'),
+    SourceSite('baiduyun', '百度云', '影视 · 分类 · 在线搜索'),
+    SourceSite('suoni', '索尼', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('hongniu', '红牛', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('maotai', '茅台', '电影 · 剧集 · 在线搜索'),
+    SourceSite('huya', '虎牙', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('xigua', '西瓜资源', '影视 · 分类 · 在线搜索'),
+    SourceSite('douban2', '豆瓣2', '影视 · 分类 · 在线搜索'),
+    SourceSite('haohua', '豪华', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('jinying', '金鹰', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('shandian', '闪电', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('feifan', '非凡', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('modu', '魔都', '影视 · 分类 · 在线搜索'),
+  ];
+
   static const allValues = [
     hongguo,
     hanxiaoquan,
@@ -52,8 +88,10 @@ class SourceSite {
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
-    SourceSite('liangzi', '量子', '电影 · 剧集 · 综艺 · 动漫'),
-    SourceSite('jciyuan', '囧次元', '动漫 · 在线搜索'),
+    ...collectorValues,
+    SourceSite('xiaopingguo', '小苹果', '影视 · 分类 · 在线搜索'),
+    SourceSite('xifu', '喜福', '分类短剧'),
+    SourceSite('hongdou', '红豆', '短剧 · 在线搜索'),
   ];
   static const values = allSourcesEnabled ? allValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);

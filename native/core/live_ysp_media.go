@@ -116,7 +116,9 @@ func (live *yspLiveServer) refreshDevice(ctx context.Context, channel yspChannel
 		err = yspMergePlaylist(state, text, state.mode != "device")
 	}
 	if err != nil {
-		live.device.reject(channel, entry)
+		if !errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {
+			live.device.reject(channel, entry)
+		}
 		return err
 	}
 	if state.media == nil {
@@ -130,6 +132,7 @@ func (live *yspLiveServer) refreshDevice(ctx context.Context, channel yspChannel
 	})
 	yspPruneLiveResources(state)
 	state.mode, state.errorText, state.failures, state.refreshed = "device", "", 0, time.Now()
+	live.device.accept(channel, entry)
 	return nil
 }
 

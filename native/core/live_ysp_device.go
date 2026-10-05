@@ -60,6 +60,11 @@ type yspDeviceEntry struct {
 	lastUsed time.Time
 }
 
+type yspDeviceFailure struct {
+	count   int
+	retryAt time.Time
+}
+
 type yspDeviceResolver struct {
 	mu           sync.Mutex
 	control      chan struct{}
@@ -69,7 +74,7 @@ type yspDeviceResolver struct {
 	device       yspDeviceState
 	session      *yspDeviceSession
 	entries      map[string]yspDeviceEntry
-	retryAt      map[string]time.Time
+	failures     map[string]yspDeviceFailure
 	sessionRetry time.Time
 	lastRequest  time.Time
 	cancel       context.CancelFunc
@@ -79,7 +84,7 @@ func newYSPDeviceResolver(client *http.Client, directory string) *yspDeviceResol
 	jar, _ := cookiejar.New(nil)
 	generic := *client
 	generic.Jar = jar
-	return &yspDeviceResolver{client: &generic, path: filepath.Join(directory, "ysp-device-state.json"), control: make(chan struct{}, 1), entries: map[string]yspDeviceEntry{}, retryAt: map[string]time.Time{}}
+	return &yspDeviceResolver{client: &generic, path: filepath.Join(directory, "ysp-device-state.json"), control: make(chan struct{}, 1), entries: map[string]yspDeviceEntry{}, failures: map[string]yspDeviceFailure{}}
 }
 
 func (device *yspDeviceResolver) start() {
@@ -180,7 +185,6 @@ func (device *yspDeviceResolver) pulse(ctx context.Context) {
 	for id, entry := range device.entries {
 		if time.Since(entry.lastUsed) > 2*time.Minute {
 			delete(device.entries, id)
-			delete(device.retryAt, id)
 		}
 	}
 	device.mu.Unlock()
@@ -197,13 +201,13 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 		entry.lastUsed = now
 		device.entries[channel.ID] = entry
 	}
-	session, retry := device.session, device.retryAt[channel.ID]
+	session, failure := device.session, device.failures[channel.ID]
 	device.mu.Unlock()
 	if exists && now.Before(entry.expires) {
 		return entry, nil
 	}
 	stale := exists && now.Before(entry.expires.Add(2*time.Minute))
-	if session == nil || now.Sub(session.created) >= yspDeviceSessionTTL || now.Before(retry) {
+	if session == nil || now.Sub(session.created) >= yspDeviceSessionTTL || now.Before(failure.retryAt) {
 		if stale {
 			return entry, nil
 		}
@@ -220,15 +224,31 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	}
 	device.mu.Lock()
 	session = device.session
+	failure = device.failures[channel.ID]
+	entry, exists = device.entries[channel.ID]
 	device.mu.Unlock()
-	if session == nil || ctx.Err() != nil {
+	if err := ctx.Err(); err != nil {
+		return yspDeviceEntry{}, err
+	}
+	now = time.Now()
+	if exists && now.Before(entry.expires) {
+		return entry, nil
+	}
+	stale = exists && now.Before(entry.expires.Add(2*time.Minute))
+	if session == nil || now.Sub(session.created) >= yspDeviceSessionTTL || now.Before(failure.retryAt) {
+		if stale {
+			return entry, nil
+		}
 		return yspDeviceEntry{}, errors.New("央视频设备协议暂未就绪")
 	}
 	fresh, err := device.resolveChannel(ctx, session, yspDeviceLiveIDs[channel.ID])
 	device.mu.Lock()
 	defer device.mu.Unlock()
 	if err != nil {
-		device.retryAt[channel.ID] = time.Now().Add(30 * time.Second)
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+			return yspDeviceEntry{}, err
+		}
+		device.recordFailureLocked(channel.ID)
 		if yspDeviceInvalidates(err) && device.session == session {
 			device.session = nil
 			device.sessionRetry = time.Now().Add(30 * time.Second)
@@ -240,8 +260,24 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	}
 	fresh.lastUsed = time.Now()
 	device.entries[channel.ID] = fresh
-	delete(device.retryAt, channel.ID)
 	return fresh, nil
+}
+
+func (device *yspDeviceResolver) recordFailureLocked(channel string) {
+	failure := device.failures[channel]
+	failure.count = min(failure.count+1, 5)
+	delay := min(30*time.Second<<(failure.count-1), 5*time.Minute)
+	failure.retryAt = time.Now().Add(delay)
+	device.failures[channel] = failure
+}
+
+func (device *yspDeviceResolver) accept(channel yspChannel, accepted yspDeviceEntry) {
+	device.mu.Lock()
+	defer device.mu.Unlock()
+	entry, exists := device.entries[channel.ID]
+	if exists && entry.address == accepted.address && entry.headers["APPSIGN"] == accepted.headers["APPSIGN"] {
+		delete(device.failures, channel.ID)
+	}
 }
 
 func (device *yspDeviceResolver) reject(channel yspChannel, rejected yspDeviceEntry) {
@@ -250,7 +286,7 @@ func (device *yspDeviceResolver) reject(channel yspChannel, rejected yspDeviceEn
 	entry, exists := device.entries[channel.ID]
 	if exists && entry.address == rejected.address && entry.headers["APPSIGN"] == rejected.headers["APPSIGN"] {
 		delete(device.entries, channel.ID)
-		device.retryAt[channel.ID] = time.Now().Add(30 * time.Second)
+		device.recordFailureLocked(channel.ID)
 	}
 }
 

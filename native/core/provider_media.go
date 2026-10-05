@@ -49,8 +49,18 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.LiangziURL, liangziBaseURL
 	case sourceJciyuan:
 		configured, fallback = d.cfg.JciyuanURL, jciyuanBaseURL
+	case sourceXiaopingguo:
+		fallback = xiaopingguoBaseURL
+	case sourceXifu:
+		fallback = xifuBaseURL
+	case sourceHongdou:
+		fallback = hongdouBaseURL
 	default:
-		fallback = "https://d2pypzndaqisk.cloudfront.net"
+		if provider, valid := maccmsProviderByID(source); valid {
+			fallback = provider.baseURL
+		} else {
+			fallback = "https://d2pypzndaqisk.cloudfront.net"
+		}
 	}
 	return strings.TrimRight(firstNonEmpty(configured, fallback), "/")
 }
@@ -89,8 +99,14 @@ func providerSourceForURL(raw string) string {
 		return sourceLiangzi
 	case host == "jciyuan.com" || host == "www.jciyuan.com":
 		return sourceJciyuan
+	case host == "asp.xpgtv.com":
+		return sourceXiaopingguo
+	case host == "minidrama-api.contentchina.com":
+		return sourceXifu
+	case host == "api.dramaplay.shop":
+		return sourceHongdou
 	default:
-		return ""
+		return maccmsSourceForHost(host)
 	}
 }
 
@@ -152,6 +168,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if isMaccmsSource(chapter.Source) {
 		return d.resolveMaccmsMedia(ctx, task)
+	}
+	if isJSONVideoSource(chapter.Source) {
+		return d.resolveJSONVideoMedia(ctx, task)
 	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)

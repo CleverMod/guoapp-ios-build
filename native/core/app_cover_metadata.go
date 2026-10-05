@@ -58,12 +58,6 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 	case sourceHanxiaoquan:
 		fresh, _, err := d.fetchHanxiaoquanDetail(ctx, id)
 		return nativeNormalize(fresh).Cover, err
-	case sourceLiangzi, sourceJciyuan:
-		row, err := d.fetchMaccmsRecord(ctx, source, id)
-		if err != nil {
-			return "", err
-		}
-		return nativeNormalize(d.maccmsDrama(source, row)).Cover, nil
 	case sourceCloudFront:
 		if !rankingSourceID.MatchString(id) {
 			return "", errors.New("无效的黄果剧集 ID")
@@ -102,6 +96,17 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 			return "", err
 		}
 		fresh, err := parseHuangguoSortDetail(body, pageURL, Drama{ID: drama.ID, Source: source, SourceID: id})
+		return nativeNormalize(fresh).Cover, err
+	}
+	if isMaccmsSource(source) {
+		row, err := d.fetchMaccmsRecord(ctx, source, id)
+		if err != nil {
+			return "", err
+		}
+		return nativeNormalize(d.maccmsDrama(source, row)).Cover, nil
+	}
+	if isJSONVideoSource(source) {
+		fresh, _, err := d.fetchJSONVideoDetail(ctx, source, id, drama)
 		return nativeNormalize(fresh).Cover, err
 	}
 	return "", errors.New("该站源暂无封面补齐接口")

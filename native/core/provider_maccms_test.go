@@ -6,10 +6,37 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestMaccmsRegistrySeparatesBackendsAndMatchesExactHosts(t *testing.T) {
+	if len(maccmsProviders) != 32 {
+		t.Fatal("wrong audited collector count")
+	}
+	ids, endpoints := map[string]bool{}, map[string]bool{}
+	for _, provider := range maccmsProviders {
+		endpoint := strings.TrimRight(provider.baseURL+provider.apiPath, "/")
+		address, err := url.Parse(provider.baseURL)
+		if err != nil || address.Host == "" || ids[provider.id] || endpoints[endpoint] {
+			t.Fatal("invalid or repeated backend", provider.id)
+		}
+		ids[provider.id], endpoints[endpoint] = true, true
+		if canonicalProviderSource(strings.ToUpper(provider.id)) != provider.id || providerSourceForURL(endpoint) != provider.id || canonicalProviderSource(address.Hostname()) != provider.id {
+			t.Fatal("source aliases do not match backend", provider.id)
+		}
+		if providerSourceForURL(provider.baseURL+".example.test"+provider.apiPath) != "" {
+			t.Fatal("accepted a hostname suffix", provider.id)
+		}
+	}
+	for _, excluded := range []string{"huohu", "suonishandian", "kuwo", "yunpan"} {
+		if isHuangguoProviderSource(excluded) {
+			t.Fatal("registered an excluded or duplicate source", excluded)
+		}
+	}
+}
 
 func TestMaccmsBestLineKeepsDirectEpisodeIdentity(t *testing.T) {
 	line := maccmsBestLine(map[string]any{"vod_play_url": "解析$https://media.example.test/player.html?url=a.m3u8#第一集$https://media.example.test/short.mp4$$$" +
@@ -41,7 +68,8 @@ func TestMaccmsResponseValidatesJSONAndSuccessCode(t *testing.T) {
 }
 
 func TestMaccmsCatalogUsesRemoteCategoriesAndPagedSearch(t *testing.T) {
-	for _, source := range []string{sourceLiangzi, sourceJciyuan} {
+	for _, entry := range maccmsProviders {
+		source := entry.id
 		t.Run(source, func(t *testing.T) {
 			provider, _ := maccmsProviderForSource(source)
 			calls := 0
@@ -118,7 +146,8 @@ func TestMaccmsCatalogRejectsWrongPageAndPreservesFallbackPagination(t *testing.
 }
 
 func TestMaccmsResolutionRefreshesURLAndRejectsForeignChapters(t *testing.T) {
-	for _, source := range []string{sourceLiangzi, sourceJciyuan} {
+	for _, entry := range maccmsProviders {
+		source := entry.id
 		t.Run(source, func(t *testing.T) {
 			details, playlists := 0, 0
 			d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
@@ -183,7 +212,8 @@ func TestMaccmsDetailRejectsUnrelatedRecordAndParserOnlyLines(t *testing.T) {
 }
 
 func TestMaccmsSourcesRespectEditionAndSeparateIdentity(t *testing.T) {
-	for _, source := range []string{sourceLiangzi, sourceJciyuan} {
+	for _, entry := range maccmsProviders {
+		source := entry.id
 		if nativeSourceAvailable(source) != (buildAllSources == "true") {
 			t.Fatal("new source changed edition availability", source)
 		}

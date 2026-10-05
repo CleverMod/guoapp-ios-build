@@ -17,9 +17,65 @@ const (
 )
 
 type maccmsProvider struct {
+	id       string
 	name     string
+	baseURL  string
 	apiPath  string
 	pageSize int
+}
+
+var maccmsProviders = []maccmsProvider{
+	{sourceLiangzi, "量子", liangziBaseURL, "/api.php/provide/vod", 20},
+	{sourceJciyuan, "囧次元", jciyuanBaseURL, "/api.php/provide/vod/", 21},
+	{"zy1080", "1080资源", "https://api.1080zyku.com", "/inc/api_mac10.php", 20},
+	{"zy155", "155资源", "https://155api.com", "/api.php/provide/vod", 20},
+	{"uku", "U酷", "https://api.ukuapi.com", "/api.php/provide/vod", 20},
+	{"ikun", "ikun", "https://ikunzyapi.com", "/api.php/provide/vod", 20},
+	{"guangsu", "光速", "https://api.guangsuapi.com", "/api.php/provide/vod", 20},
+	{"dazhong", "大众资源", "https://cdn.dzzyapi.com", "/api.php/provide/vod/", 20},
+	{"tianya", "天涯", "https://tyyszy.com", "/api.php/provide/vod/", 20},
+	{"ruyi", "如意影视", "https://cj.rycjapi.com", "/api.php/provide/vod/", 20},
+	{"jiuyao", "就要", "https://jyzyapi.com", "/api.php/provide/vod/", 20},
+	{"xinlang", "新浪", "https://api.xinlangapi.com", "/xinlangapi.php/provide/vod", 20},
+	{"wujin", "无尽", "https://api.wujinapi.cc", "/api.php/provide/vod", 20},
+	{"wushuiyin", "无水印", "https://api.wsyzy.net", "/api.php/provide/vod", 20},
+	{"baofeng", "暴风", "https://bfzyapi.com", "/api.php/provide/vod/", 20},
+	{"zuida", "最大", "https://api.zuidapi.com", "/api.php/provide/vod", 20},
+	{"jisu", "极速", "https://jszyapi.com", "/api.php/provide/vod/", 20},
+	{"yinghua", "樱花", "https://m3u8.apiyhzy.com", "/api.php/provide/vod", 20},
+	{"niuniu", "牛牛", "https://api.niuniuzy.me", "/api.php/provide/vod", 20},
+	{"dytt", "电影天堂", "http://caiji.dyttzyapi.com", "/api.php/provide/vod/from/dyttm3u8/at/json", 20},
+	{"baiduyun", "百度云", "https://api.apibdzy.com", "/api.php/provide/vod", 20},
+	{"suoni", "索尼", "https://suoniapi.com", "/api.php/provide/vod/", 20},
+	{"hongniu", "红牛", "https://www.hongniuzy2.com", "/api.php/provide/vod/", 20},
+	{"maotai", "茅台", "https://caiji.maotaizy.cc", "/api.php/provide/vod/", 20},
+	{"huya", "虎牙", "https://www.huyaapi.com", "/api.php/provide/vod/", 20},
+	{"xigua", "西瓜资源", "https://caiji.xgzyapi.com", "/api.php/provide/vod/", 20},
+	{"douban2", "豆瓣2", "https://dbzy.tv", "/api.php/provide/vod/", 20},
+	{"haohua", "豪华", "https://hhzyapi.com", "/api.php/provide/vod/", 20},
+	{"jinying", "金鹰", "https://jinyingzy.com", "/api.php/provide/vod", 20},
+	{"shandian", "闪电", "https://sdzyapi.com", "/api.php/provide/vod", 20},
+	{"feifan", "非凡", "https://cj.ffzyapi.com", "/api.php/provide/vod", 20},
+	{"modu", "魔都", "https://www.mdzyapi.com", "/api.php/provide/vod", 20},
+}
+
+func maccmsProviderByID(id string) (maccmsProvider, bool) {
+	for _, provider := range maccmsProviders {
+		if provider.id == id {
+			return provider, true
+		}
+	}
+	return maccmsProvider{}, false
+}
+
+func maccmsSourceForHost(host string) string {
+	for _, provider := range maccmsProviders {
+		address, _ := url.Parse(provider.baseURL)
+		if address.Hostname() == host {
+			return provider.id
+		}
+	}
+	return ""
 }
 
 type maccmsResponse struct {
@@ -44,14 +100,7 @@ type maccmsLine struct {
 }
 
 func maccmsProviderForSource(source string) (maccmsProvider, bool) {
-	switch canonicalProviderSource(source) {
-	case sourceLiangzi:
-		return maccmsProvider{name: "量子", apiPath: "/api.php/provide/vod", pageSize: 20}, true
-	case sourceJciyuan:
-		return maccmsProvider{name: "囧次元", apiPath: "/api.php/provide/vod/", pageSize: 21}, true
-	default:
-		return maccmsProvider{}, false
-	}
+	return maccmsProviderByID(canonicalProviderSource(source))
 }
 
 func isMaccmsSource(source string) bool {

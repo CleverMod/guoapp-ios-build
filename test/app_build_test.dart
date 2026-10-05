@@ -18,7 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
     final store = testStore(await SharedPreferences.getInstance());
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(store.sources.length, allSourcesEnabled ? 13 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 46 : 1);
     expect(
       SourceSite.values.any((source) => source.id == 'dsd'),
       allSourcesEnabled,
@@ -28,7 +28,7 @@ void main() {
     expect(SourceSite.byId('dsd').name, '帝果');
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     expect(store.source, allSourcesEnabled ? 'huangdou' : 'hongguo');
-    expect(store.sources.length, allSourcesEnabled ? 13 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 46 : 1);
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     store.dispose();
   });
@@ -49,15 +49,26 @@ void main() {
         'huangguoai',
         'cloudfront',
       ]);
-      expect(SourceSite.allValues.skip(11).map((source) => source.id), [
+      expect(SourceSite.allValues.skip(11).take(2).map((source) => source.id), [
         'liangzi',
         'jciyuan',
       ]);
-      for (final source in ['liangzi', 'jciyuan']) {
+      expect(SourceSite.collectorValues, hasLength(32));
+      expect(
+        SourceSite.allValues.map((source) => source.id).toSet(),
+        hasLength(46),
+      );
+      for (final source in [
+        ...SourceSite.collectorValues.map((source) => source.id),
+        'xiaopingguo',
+        'hongdou',
+      ]) {
         expect(SourceSite.isKnown(source), isTrue);
         expect(SourceSite.isAvailable(source), allSourcesEnabled);
         expect(SourceSite.byId(source).pagedSearch, isTrue);
       }
+      expect(SourceSite.isAvailable('xifu'), allSourcesEnabled);
+      expect(SourceSite.byId('xifu').onlineSearch, isFalse);
       final group = SourceGroup.fromSources(
         SourceSite.allValues,
       ).singleWhere((group) => group.id == 'huangguo');

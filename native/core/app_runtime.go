@@ -593,8 +593,15 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
-	if query != "" && isMaccmsSource(source) {
-		items, more, err := d.fetchMaccmsCatalogPage(ctx, source, page, "", query)
+	if query != "" && (isMaccmsSource(source) || source == sourceXiaopingguo || source == sourceHongdou) {
+		var items []Drama
+		var more bool
+		var err error
+		if isMaccmsSource(source) {
+			items, more, err = d.fetchMaccmsCatalogPage(ctx, source, page, "", query)
+		} else {
+			items, more, err = d.fetchJSONVideoCatalogPage(ctx, source, page, "", query)
+		}
 		if err != nil {
 			return result, err
 		}
@@ -700,8 +707,6 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items, result.HasMore, err = d.fetchGuipianCatalogPage(ctx, page, category, "")
 	case sourceHanxiaoquan:
 		items, result.HasMore, err = d.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
-	case sourceLiangzi, sourceJciyuan:
-		items, result.HasMore, err = d.fetchMaccmsCatalogPage(ctx, source, page, category, "")
 	case sourceHuangguoVideo:
 		address := fmt.Sprintf("%s/videos?page=%d", d.providerBaseURL(source), page)
 		if category != "" {
@@ -715,11 +720,17 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = len(items) >= 20
 	case sourceCloudFront:
 		items, result.HasMore, err = d.fetchLegacyCatalogCategoryPage(ctx, page, category)
+	default:
+		if isMaccmsSource(source) {
+			items, result.HasMore, err = d.fetchMaccmsCatalogPage(ctx, source, page, category, "")
+		} else if isJSONVideoSource(source) {
+			items, result.HasMore, err = d.fetchJSONVideoCatalogPage(ctx, source, page, category, "")
+		}
 	}
 	if err != nil && len(items) == 0 {
 		return result, err
 	}
-	if len(items) == 0 && page == 1 && source != sourceHuangju && source != sourceYeguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && !isMaccmsSource(source) {
+	if len(items) == 0 && page == 1 && source != sourceHuangju && source != sourceYeguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && !isMaccmsSource(source) && !isJSONVideoSource(source) {
 		return result, errors.New("站源暂未返回剧集，请稍后刷新")
 	}
 	if err != nil {
@@ -765,10 +776,14 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = engine.downloader.fetchGuipianDetail(ctx, sourceID)
 	case sourceHanxiaoquan:
 		raw, chapters, err = engine.downloader.fetchHanxiaoquanDetail(ctx, sourceID)
-	case sourceLiangzi, sourceJciyuan:
-		raw, chapters, err = engine.downloader.fetchMaccmsDetail(ctx, source, sourceID)
 	default:
-		title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
+		if isMaccmsSource(source) {
+			raw, chapters, err = engine.downloader.fetchMaccmsDetail(ctx, source, sourceID)
+		} else if isJSONVideoSource(source) {
+			raw, chapters, err = engine.downloader.fetchJSONVideoDetail(ctx, source, sourceID, drama)
+		} else {
+			title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
+		}
 	}
 	if err != nil {
 		return nil, err

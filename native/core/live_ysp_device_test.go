@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -297,7 +298,151 @@ func TestYSPDevicePlaylistFailureFallsBackToExistingRoute(t *testing.T) {
 	if err := live.refreshState(context.Background(), yspChannel{ID: "cctv11", Backup: true}, &state); err != nil {
 		t.Fatal(err)
 	}
-	if requests != 2 || state.mode != "bk" || state.playlist == "" || len(device.entries) != 0 || !device.retryAt["cctv11"].After(time.Now()) {
+	if requests != 2 || state.mode != "bk" || state.playlist == "" || len(device.entries) != 0 || !device.failures["cctv11"].retryAt.After(time.Now()) {
 		t.Fatal("an unavailable device route interrupted the existing fallback")
+	}
+}
+
+func TestYSPDeviceCooldownEscalatesAndIsolatesChannels(t *testing.T) {
+	requests := 0
+	client := &http.Client{Transport: yspFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		requests++
+		return yspDeviceFixtureResponse(request, 503, ""), nil
+	})}
+	device := newYSPDeviceResolver(client, t.TempDir())
+	device.session = &yspDeviceSession{client: client, created: time.Now()}
+	channel := yspChannel{ID: "cctv4k"}
+	for index, delay := range []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute, 5 * time.Minute} {
+		previous := device.failures[channel.ID]
+		previous.retryAt = time.Now().Add(-time.Second)
+		device.failures[channel.ID] = previous
+		device.lastRequest = time.Time{}
+		started := time.Now()
+		if _, err := device.resolve(context.Background(), channel); err == nil || requests != index+1 {
+			t.Fatal("failed device resolution did not perform exactly one control request", err)
+		}
+		failure := device.failures[channel.ID]
+		if failure.count != min(index+1, 5) || failure.retryAt.Before(started.Add(delay)) || failure.retryAt.After(time.Now().Add(delay)) {
+			t.Fatal("device cooldown did not grow to the expected capped duration", index, failure)
+		}
+		if _, err := device.resolve(context.Background(), channel); err == nil || requests != index+1 || device.failures[channel.ID] != failure {
+			t.Fatal("cooldown performed another request or counted a second failure", err)
+		}
+	}
+	device.lastRequest = time.Time{}
+	if _, err := device.resolve(context.Background(), yspChannel{ID: "cctv5"}); err == nil || requests != 8 || device.failures["cctv5"].count != 1 || device.failures[channel.ID].count != 5 {
+		t.Fatal("one channel's cooldown affected another channel", err)
+	}
+}
+
+func TestYSPDeviceCooldownSurvivesNewURLsUntilPlaylistRecovery(t *testing.T) {
+	key := strings.Repeat("k", 32)
+	secret, err := yspDeviceEncrypt("fixture-secret", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlRequests, playlistRequests := 0, 0
+	ready := false
+	client := &http.Client{Transport: yspFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/gsnw/api/live/v1/01":
+			controlRequests++
+			return yspDeviceFixtureResponse(request, 200, `{"data":{"videoList":[{"rate":"36p","url":"http://media.test/live.m3u8"}]}}`), nil
+		case "/gsnw/api/live/v1/02":
+			controlRequests++
+			return yspDeviceFixtureResponse(request, 200, fmt.Sprintf(`{"data":{"appSecret":%q}}`, secret)), nil
+		case "/cctvmobileinf/rest/cctv/videoliveUrl/getstream":
+			controlRequests++
+			return yspDeviceFixtureResponse(request, 200, `{"succeed":1,"url":"http://media.test/device.m3u8"}`), nil
+		case "/device.m3u8":
+			playlistRequests++
+			if !ready {
+				return yspDeviceFixtureResponse(request, 503, ""), nil
+			}
+		case "/fallback.m3u8":
+		default:
+			t.Fatal("unexpected cooldown fixture request")
+		}
+		return yspDeviceFixtureResponse(request, 200, "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:2,\n1.ts\n"), nil
+	})}
+	device := newYSPDeviceResolver(client, t.TempDir())
+	device.session = &yspDeviceSession{client: client, key: key, created: time.Now()}
+	live := &yspLiveServer{client: client, mediaClient: client, device: device}
+	channel := yspChannel{ID: "cctv4k", Backup: true}
+	state := yspLiveState{mode: "bk", urls: []string{"http://media.test/fallback.m3u8"}, urlTime: time.Now()}
+	for attempt := 1; attempt <= 2; attempt++ {
+		failure := device.failures[channel.ID]
+		failure.retryAt = time.Now().Add(-time.Second)
+		device.failures[channel.ID] = failure
+		device.lastRequest = time.Time{}
+		if err := live.refreshState(context.Background(), channel, &state); err != nil || state.mode != "bk" || device.failures[channel.ID].count != attempt || controlRequests != 3*attempt || playlistRequests != attempt {
+			t.Fatal("a new signed URL reset failures before the playlist recovered", err)
+		}
+		failure = device.failures[channel.ID]
+		if err := live.refreshState(context.Background(), channel, &state); err != nil || state.mode != "bk" || device.failures[channel.ID] != failure || controlRequests != 3*attempt || playlistRequests != attempt {
+			t.Fatal("cooldown interrupted fallback playback or retried the device route", err)
+		}
+	}
+	failure := device.failures[channel.ID]
+	failure.retryAt = time.Now().Add(-time.Second)
+	device.failures[channel.ID] = failure
+	device.lastRequest = time.Time{}
+	ready = true
+	if err := live.refreshState(context.Background(), channel, &state); err != nil || state.mode != "device" || len(device.failures) != 0 || controlRequests != 9 || playlistRequests != 3 {
+		t.Fatal("a recovered device playlist did not clear its cooldown", err)
+	}
+	ready = false
+	if err := live.refreshState(context.Background(), channel, &state); err == nil || device.failures[channel.ID].count != 1 || controlRequests != 9 || playlistRequests != 4 {
+		t.Fatal("the first failure after recovery did not restart at the initial cooldown", err)
+	}
+}
+
+func TestYSPDeviceCooldownIgnoresCanceledAndOutdatedRequests(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	requests := 0
+	client := &http.Client{Transport: yspFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		requests++
+		cancel()
+		return nil, context.Canceled
+	})}
+	device := newYSPDeviceResolver(client, t.TempDir())
+	device.session = &yspDeviceSession{client: client, created: time.Now()}
+	channel := yspChannel{ID: "cctv4k"}
+	if _, err := device.resolve(ctx, channel); !errors.Is(err, context.Canceled) || requests != 1 || len(device.failures) != 0 || len(device.control) != 0 {
+		t.Fatal("canceling a control request counted a failure or leaked the control slot", err)
+	}
+	device.control <- struct{}{}
+	if _, err := device.resolve(context.Background(), channel); err == nil || requests != 1 || len(device.failures) != 0 {
+		t.Fatal("a busy control slot counted a channel failure", err)
+	}
+	<-device.control
+	entry := yspDeviceEntry{address: "http://media.test/device.m3u8", headers: map[string]string{"APPSIGN": "new-sign"}, expires: time.Now().Add(time.Minute)}
+	device.entries[channel.ID] = entry
+	failure := yspDeviceFailure{count: 3, retryAt: time.Now().Add(2 * time.Minute)}
+	device.failures[channel.ID] = failure
+	playlistContext, stop := context.WithCancel(context.Background())
+	defer stop()
+	client.Transport = yspFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		stop()
+		return nil, context.Canceled
+	})
+	live := &yspLiveServer{client: client, mediaClient: client, device: device}
+	if err := live.refreshDevice(playlistContext, channel, &yspLiveState{}); err == nil || device.failures[channel.ID] != failure || len(device.entries) != 1 {
+		t.Fatal("canceling a playlist request rejected the route or changed its cooldown", err)
+	}
+	old := entry
+	old.headers = map[string]string{"APPSIGN": "old-sign"}
+	device.accept(channel, old)
+	device.reject(channel, old)
+	if device.failures[channel.ID] != failure || len(device.entries) != 1 {
+		t.Fatal("an outdated response changed the current route's failure state")
+	}
+	device.reject(channel, entry)
+	failure = device.failures[channel.ID]
+	device.reject(channel, entry)
+	device.accept(channel, entry)
+	if failure.count != 4 || device.failures[channel.ID] != failure || len(device.entries) != 0 {
+		t.Fatal("duplicate or already-rejected responses changed the cooldown")
 	}
 }
