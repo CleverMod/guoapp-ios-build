@@ -13,7 +13,7 @@ import (
 )
 
 func TestMaccmsRegistrySeparatesBackendsAndMatchesExactHosts(t *testing.T) {
-	if len(maccmsProviders) != 32 {
+	if len(maccmsProviders) != 30 {
 		t.Fatal("wrong audited collector count")
 	}
 	ids, endpoints := map[string]bool{}, map[string]bool{}
@@ -31,7 +31,7 @@ func TestMaccmsRegistrySeparatesBackendsAndMatchesExactHosts(t *testing.T) {
 			t.Fatal("accepted a hostname suffix", provider.id)
 		}
 	}
-	for _, excluded := range []string{"huohu", "suonishandian", "kuwo", "yunpan"} {
+	for _, excluded := range []string{"huohu", "suonishandian", "kuwo", "yunpan", "zy1080", "uku", "wuwu"} {
 		if isHuangguoProviderSource(excluded) {
 			t.Fatal("registered an excluded or duplicate source", excluded)
 		}

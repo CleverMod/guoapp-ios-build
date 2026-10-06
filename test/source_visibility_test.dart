@@ -26,7 +26,7 @@ void main() {
 
     expect(store.configurationError, isNull);
     expect(store.sources.map((site) => site.id), sourceIds);
-    expect(store.sources, hasLength(allSourcesEnabled ? 60 : 1));
+    expect(store.sources, hasLength(allSourcesEnabled ? 62 : 1));
     for (final source in sourceIds) {
       expect(store.allowsSource(source), isTrue);
     }
@@ -37,7 +37,7 @@ void main() {
       const LocalProfile(
         id: 'viewer',
         name: '已有用户',
-        sources: ['yeguo-worker', 'xiaobao', 'xingya'],
+        sources: ['yeguo-worker', 'wuwu', 'xingya'],
       ).toJson(),
     );
     expect(profile.sources, ['xingya']);
@@ -72,7 +72,7 @@ void main() {
           const LocalProfile(
             id: 'viewer',
             name: '已有用户',
-            sources: ['hongdou', 'hongguo', 'xiaopingguo', 'xifu'],
+            sources: ['hongdou', 'hongguo', 'uku', 'xifu'],
           ).toJson(),
         ]),
         'activeProfile': 'default',
@@ -94,7 +94,7 @@ void main() {
       expect(store.favorites, isEmpty);
       expect(store.history, isEmpty);
       expect(store.allowsSource('hongdou'), isFalse);
-      expect(store.allowsSource('xiaopingguo'), isFalse);
+      expect(store.allowsSource('uku'), isFalse);
       final backup = jsonDecode(await store.exportBackup()) as Map;
       final library = (backup['libraries'] as Map)['viewer'] as Map;
       expect((library['favorites'] as List).single['id'], retired.id);

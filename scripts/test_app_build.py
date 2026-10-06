@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -10,7 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from app_build import BuildVariant
+from app_build import BuildVariant, source_access_flags
 from configure_ios_branding import configure
 
 
@@ -19,6 +20,31 @@ def dart_defines(*values):
 
 
 class AppBuildTests(unittest.TestCase):
+    def test_required_source_access_rejects_stale_live_signing_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'source_access.json'
+            for config in ({'other': {'headers': {'Token': 'fixture'}}},
+                           {'ysp_live': {'settings': {'appID': 'fixture'}}}):
+                path.write_text(json.dumps(config), encoding='utf-8')
+                with self.assertRaisesRegex(SystemExit, 'GUOAPP_SOURCE_ACCESS'):
+                    source_access_flags(path, required=True)
+
+    def test_required_live_signing_inputs_are_bundled_with_other_sources(self):
+        names = ('appID', 'videoAppID', 'videoSecret', 'authSalt', 'liveSalt',
+                 'cKeyKey', 'cKeyIV', 'cKeyMarker', 'version', 'cookie')
+        config = {'other': {'headers': {'Token': 'fixture'}},
+                  'ysp_live': {'settings': {name: 'fixture' for name in names}}}
+        requirements = {'xiaopingguo': ('PUB1', 'NATIVE', 'DATAIV', 'DATAKEY', 'RR_SS', 'RR_DK', 'RR_IV', 'RR_API', 'RR_REF', 'RR_UA'), 'luoxue': ('bfqPlayer', 'bfqReferer'), 'jumi': ('discoveryURL', 'numberSeed', 'numberSuffix', 'appID'), 'nnvideo': ('discoveryKey', 'discoveryURLs', 'hosts', 'xcConfig', 'zhenxiangURL', 'sjURL', 'backends', 'playerAliases')}
+        for source, fields in requirements.items():
+            config[source] = {'headers': {'User-Agent': 'fixture'}, 'settings': {name: 'fixture' for name in fields}}
+        config['xiaobao'] = {'headers': {'User-Agent': 'fixture'}}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'source_access.json'
+            path.write_text(json.dumps(config), encoding='utf-8')
+            flags = source_access_flags(path, required=True)
+            encoded = flags.split('bundledAttachedAccessBase64=', 1)[1]
+            self.assertEqual(json.loads(base64.b64decode(encoded)), config)
+
     def test_omitted_or_false_flag_keeps_hongguo_only(self):
         for encoded in ['', dart_defines('ALL_SOURCES=false'), dart_defines('OTHER=true')]:
             variant = BuildVariant.from_dart_defines(encoded)
@@ -77,6 +103,7 @@ class AppBuildTests(unittest.TestCase):
                     with mock.patch.object(sys, 'argv', arguments), \
                             mock.patch.dict(os.environ, {'PATH': '/tools'}, clear=True), \
                             mock.patch('shutil.which', return_value='/tools/flutter'), \
+                            mock.patch('platform.system', return_value='Windows'), \
                             mock.patch('subprocess.run') as run:
                         runpy.run_path(str(script), run_name='__main__')
                     calls = [call.args[0] for call in run.call_args_list]

@@ -32,7 +32,7 @@ func TestAttachedSourceRegistryCategoriesAndSearch(t *testing.T) {
 			t.Fatal("search capability mismatch", provider.id)
 		}
 	}
-	if len(seen) != 16 || isHuangguoProviderSource("yeguo-worker") {
+	if len(seen) != 20 || isHuangguoProviderSource("yeguo-worker") {
 		t.Fatal("attached source count or retired worker mismatch")
 	}
 }
@@ -51,31 +51,6 @@ func TestAttachedCatalogPreservesIdentityAndDoesNotFetchCovers(t *testing.T) {
 	rows, more, err := d.fetchAttachedCatalogPage(context.Background(), "weiguan", 1, "", "合成")
 	if err != nil || len(rows) != 1 || rows[0].ID != "weiguan:123" || !more {
 		t.Fatal("catalog identity mismatch", rows, more, err)
-	}
-}
-
-func TestAttachedHTMLUsesOriginalLineAndBoundEpisode(t *testing.T) {
-	d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
-		switch request.URL.Path {
-		case "/index.php/vod/detail/id/321.html":
-			return sourceFixtureResponse(request, 200, `<h1>合成剧</h1><a href="/index.php/vod/play/id/321/sid/1/nid/1.html">第1集</a><a href="/index.php/vod/play/id/321/sid/1/nid/2.html">第2集</a><a href="/index.php/vod/play/id/321/sid/2/nid/1.html">第1集</a>`), nil
-		case "/index.php/vod/play/id/321/sid/1/nid/2.html":
-			return sourceFixtureResponse(request, 200, `<script>var player_aaaa={"encrypt":2,"url":"`+base64.StdEncoding.EncodeToString([]byte("https://media.example.test/2.mp4"))+`"};</script>`), nil
-		default:
-			t.Fatal("unexpected request", request.URL.Path)
-			return nil, nil
-		}
-	})
-	_, chapters, err := d.fetchAttachedDetail(context.Background(), "wuwu", "321")
-	if err != nil || len(chapters) != 2 || chapters[1].ID != "wuwu:321:1-2" {
-		t.Fatal("line or episode mismatch", chapters, err)
-	}
-	media, err := d.resolveAttachedMedia(context.Background(), Task{DramaID: "wuwu:321", Chapter: chapters[1]})
-	if err != nil || media.URL != "https://media.example.test/2.mp4" {
-		t.Fatal("player decoding mismatch", media, err)
-	}
-	if _, err = d.resolveAttachedMedia(context.Background(), Task{DramaID: "wuwu:321", Chapter: Chapter{ID: "wuwu:999:1-2", Source: "wuwu"}}); err == nil {
-		t.Fatal("accepted unrelated episode")
 	}
 }
 

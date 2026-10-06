@@ -76,5 +76,24 @@ def source_access_flags(path=None, required=False):
                 raise ValueError()
     except (ValueError, TypeError):
         raise SystemExit('站源授权配置格式无效；实际内容已隐藏。') from None
+    if required:
+        web = config.get('ysp_live', {}).get('settings', {})
+        names = ('appID', 'videoAppID', 'videoSecret', 'authSalt', 'liveSalt',
+                 'cKeyKey', 'cKeyIV', 'cKeyMarker', 'version', 'cookie')
+        if any(not web.get(name) for name in names):
+            raise SystemExit('缺少央视频 Web 备用线路的内置签名配置，请更新 GUOAPP_SOURCE_ACCESS。')
+        requirements = {
+            'xiaopingguo': ('PUB1', 'NATIVE', 'DATAIV', 'DATAKEY', 'RR_SS', 'RR_DK', 'RR_IV', 'RR_API', 'RR_REF', 'RR_UA'),
+            'luoxue': ('bfqPlayer', 'bfqReferer'),
+            'jumi': ('discoveryURL', 'numberSeed', 'numberSuffix', 'appID'),
+            'nnvideo': ('discoveryKey', 'discoveryURLs', 'hosts', 'xcConfig', 'zhenxiangURL', 'sjURL', 'backends', 'playerAliases'),
+        }
+        for source, names in requirements.items():
+            settings = config.get(source, {}).get('settings', {})
+            if any(not settings.get(name) for name in names):
+                raise SystemExit(f'缺少 {source} 的内置协议配置，请更新 GUOAPP_SOURCE_ACCESS。')
+        for source in (*requirements, 'xiaobao'):
+            if not config.get(source, {}).get('headers', {}).get('User-Agent'):
+                raise SystemExit(f'缺少 {source} 的内置请求头，请更新 GUOAPP_SOURCE_ACCESS。')
     encoded = base64.b64encode(json.dumps(config, ensure_ascii=False, separators=(',', ':')).encode('utf-8')).decode('ascii')
     return ' -X duanjuapp/native/core.bundledAttachedAccessBase64=' + encoded

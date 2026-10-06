@@ -27,7 +27,11 @@ class SourceSite {
         "xifan",
         "qixing",
         "niuniudj",
-        "wuwu",
+        "xiaopingguo",
+        "luoxue",
+        "xiaobao",
+        "jumi",
+        "nnvideo",
         "dj91",
         "yizk",
       }.contains(id);
@@ -57,9 +61,7 @@ class SourceSite {
   static const collectorValues = [
     SourceSite('liangzi', '量子', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('jciyuan', '囧次元', '动漫 · 在线搜索'),
-    SourceSite('zy1080', '1080资源', '电影 · 剧集 · 在线搜索'),
     SourceSite('zy155', '155资源', '影视 · 分类 · 在线搜索'),
-    SourceSite('uku', 'U酷', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('ikun', 'ikun', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('guangsu', '光速', '电影 · 剧集 · 在线搜索'),
     SourceSite('dazhong', '大众资源', '影视 · 分类 · 在线搜索'),
@@ -90,6 +92,11 @@ class SourceSite {
   ];
 
   static const attachedValues = [
+    SourceSite('xiaopingguo', '小苹果', '电影 · 剧集 · 4K专区'),
+    SourceSite('luoxue', '洛雪TV', '电影 · 剧集 · 动漫 · 综艺'),
+    SourceSite('xiaobao', '小宝影院', '电影 · 剧集 · 在线搜索'),
+    SourceSite('jumi', '剧迷', '影视 · 分类 · 在线搜索'),
+    SourceSite('nnvideo', '牛牛视频', '影视 · 多线路 · 在线搜索'),
     SourceSite("batvideo", "蝙蝠视频", "分类视频 · 在线搜索"),
     SourceSite("honeypeach", "暗黑蜜桃", "分类视频 · 在线搜索"),
     SourceSite("weiguan", "围观", "分类视频 · 在线搜索"),
@@ -102,7 +109,6 @@ class SourceSite {
     SourceSite("yimi", "薏米", "分类视频 · 本地搜索"),
     SourceSite("qixing", "七星", "分类视频 · 在线搜索"),
     SourceSite("niuniudj", "牛牛短剧", "分类视频 · 在线搜索"),
-    SourceSite("wuwu", "五五", "分类视频 · 在线搜索"),
     SourceSite("kuangbiao", "狂飙", "分类视频 · 本地搜索"),
     SourceSite("dj91", "91", "分类视频 · 在线搜索"),
     SourceSite("yizk", "一直看", "分类视频 · 在线搜索"),
@@ -128,7 +134,11 @@ class SourceSite {
   static bool isAvailable(String id) => values.any((site) => site.id == id);
   static bool isKnown(String id) => allValues.any((site) => site.id == id);
   static bool isRetired(String id) => const {
-    'xiaopingguo',
+    'wuwu',
+    'yingtan',
+    'qiwei',
+    'uku',
+    'zy1080',
     'hongdou',
     'baidu',
     'chengguo',
@@ -142,7 +152,6 @@ class SourceSite {
     'souju',
     'wusheng',
     'xiangjiao',
-    'xiaobao',
     'xingxing',
     'yeguo-worker',
   }.contains(id);

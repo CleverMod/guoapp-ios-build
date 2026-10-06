@@ -27,9 +27,7 @@ type maccmsProvider struct {
 var maccmsProviders = []maccmsProvider{
 	{sourceLiangzi, "量子", liangziBaseURL, "/api.php/provide/vod", 20},
 	{sourceJciyuan, "囧次元", jciyuanBaseURL, "/api.php/provide/vod/", 21},
-	{"zy1080", "1080资源", "https://api.1080zyku.com", "/inc/api_mac10.php", 20},
 	{"zy155", "155资源", "https://155api.com", "/api.php/provide/vod", 20},
-	{"uku", "U酷", "https://api.ukuapi.com", "/api.php/provide/vod", 20},
 	{"ikun", "ikun", "https://ikunzyapi.com", "/api.php/provide/vod", 20},
 	{"guangsu", "光速", "https://api.guangsuapi.com", "/api.php/provide/vod", 20},
 	{"dazhong", "大众资源", "https://cdn.dzzyapi.com", "/api.php/provide/vod/", 20},

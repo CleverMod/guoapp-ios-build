@@ -755,6 +755,9 @@ func (c *attachedClient) detailIdentity(row map[string]any, id string) bool {
 }
 
 func (c *attachedClient) play(ctx context.Context, id, key string, chapter Chapter) (providerMedia, error) {
+	if c.p.kind == "imported" {
+		return c.importedPlay(ctx, id, chapter)
+	}
 	if c.p.kind == "html" {
 		return c.htmlPlay(ctx, id, key, chapter)
 	}

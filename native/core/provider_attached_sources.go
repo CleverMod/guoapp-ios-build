@@ -11,6 +11,21 @@ type attachedProvider struct {
 }
 
 var attachedProviders = []attachedProvider{
+	{id: "xiaopingguo", name: "小苹果", base: "http://122.228.193.211:18008", kind: "imported", search: true, categories: []attachedCategory{
+		{"2", "剧集", "2", ""}, {"1", "电影", "1", ""}, {"3", "综艺", "3", ""}, {"4", "动漫", "4", ""}, {"5", "短剧", "5", ""}, {"117", "4K专区", "117", ""}, {"115", "奈飞专区", "115", ""},
+	}},
+	{id: "luoxue", name: "洛雪TV", base: "https://tv.lxyy.club", kind: "imported", search: true, categories: []attachedCategory{
+		{"movie", "电影", "movie", ""}, {"series", "剧集", "series", ""}, {"anime", "动漫", "anime", ""}, {"variety", "综艺", "variety", ""},
+	}},
+	{id: "xiaobao", name: "小宝影院", base: "https://www.xiaobaotv.com", kind: "imported", search: true, categories: []attachedCategory{
+		{"1", "电影", "1", ""}, {"2", "电视剧", "2", ""}, {"3", "动漫", "3", ""}, {"4", "综艺", "4", ""}, {"11", "短剧", "11", ""},
+	}},
+	{id: "jumi", name: "剧迷", base: "http://2025-1329689796.cos.ap-guangzhou.myqcloud.com", kind: "imported", search: true, categories: []attachedCategory{
+		{"movie", "电影", "movie", ""}, {"tv", "剧集", "tv", ""},
+	}},
+	{id: "nnvideo", name: "牛牛视频", base: "https://ccc.chaojichaojichanga.com:35620", kind: "imported", search: true, categories: []attachedCategory{
+		{"1", "电影", "1", ""}, {"2", "剧集", "2", ""}, {"3", "综艺", "3", ""}, {"4", "动漫", "4", ""}, {"5", "短剧", "5", ""}, {"11", "直播", "11", ""}, {"10", "热舞", "10", ""}, {"7", "传媒", "7", ""}, {"8", "吃瓜", "8", ""}, {"6", "福利", "6", ""}, {"9", "午夜", "9", ""}, {"12", "AI短剧", "12", ""}, {"13", "滴滴", "13", ""},
+	}},
 
 	{id: "batvideo", name: "蝙蝠视频", base: "https://257915.xyz", kind: "html", search: true, categories: []attachedCategory{
 		{"64360061", "线路1·中文字幕", "64360061", ""},
@@ -260,21 +275,6 @@ var attachedProviders = []attachedProvider{
 		{"军事", "军事", "军事", ""},
 		{"二次元", "二次元", "二次元", ""},
 		{"其他剧情", "其他剧情", "其他剧情", ""},
-	}},
-
-	{id: "wuwu", name: "五五", base: "https://www.duanju55.com", kind: "html", search: true, categories: []attachedCategory{
-		{"全部", "全部", "全部", ""},
-		{"男频", "男频", "男频", ""},
-		{"女频", "女频", "女频", ""},
-		{"都市", "都市", "都市", ""},
-		{"虐渣", "虐渣", "虐渣", ""},
-		{"励志", "励志", "励志", ""},
-		{"逆袭", "逆袭", "逆袭", ""},
-		{"古风", "古风", "古风", ""},
-		{"复仇", "复仇", "复仇", ""},
-		{"家庭", "家庭", "家庭", ""},
-		{"悬疑", "悬疑", "悬疑", ""},
-		{"奇幻", "奇幻", "奇幻", ""},
 	}},
 
 	{id: "kuangbiao", name: "狂飙", base: "https://ai.dramarush.tv", kind: "api", search: false, categories: []attachedCategory{

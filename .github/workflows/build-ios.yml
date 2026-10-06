@@ -64,6 +64,17 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
           pod --version
+      - name: Verify imported source adapters
+        run: |
+          python3 -m unittest discover -s ../scripts -p 'test_*.py'
+          go vet ./...
+          go test ./core -run 'TestImported|TestAttached|TestMaccms|TestCatalogRestore' -count=1
+          go test ./core -ldflags='-X duanjuapp/native/core.buildAllSources=true' -run 'TestImported|TestAttached|TestMaccms|TestCatalogRestore' -count=1
+        working-directory: native
+      - name: Verify source visibility and retirement in Flutter
+        run: |
+          flutter test test/app_build_test.dart test/source_visibility_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
+          flutter test test/app_build_test.dart test/source_visibility_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
       - name: Upload dependency lockfile
         if: inputs.refresh_lockfile
         uses: actions/upload-artifact@v4

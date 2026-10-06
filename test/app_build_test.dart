@@ -18,7 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
     final store = testStore(await SharedPreferences.getInstance());
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(store.sources.length, allSourcesEnabled ? 44 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 62 : 1);
     expect(
       SourceSite.values.any((source) => source.id == 'dsd'),
       allSourcesEnabled,
@@ -28,7 +28,7 @@ void main() {
     expect(SourceSite.byId('dsd').name, '帝果');
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     expect(store.source, allSourcesEnabled ? 'huangdou' : 'hongguo');
-    expect(store.sources.length, allSourcesEnabled ? 44 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 62 : 1);
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     store.dispose();
   });
@@ -53,10 +53,10 @@ void main() {
         'liangzi',
         'jciyuan',
       ]);
-      expect(SourceSite.collectorValues, hasLength(32));
+      expect(SourceSite.collectorValues, hasLength(30));
       expect(
         SourceSite.allValues.map((source) => source.id).toSet(),
-        hasLength(44),
+        hasLength(62),
       );
       for (final source in SourceSite.collectorValues.map(
         (source) => source.id,
@@ -67,7 +67,7 @@ void main() {
       }
       expect(SourceSite.isAvailable('xifu'), allSourcesEnabled);
       expect(SourceSite.byId('xifu').onlineSearch, isFalse);
-      for (final source in ['xiaopingguo', 'hongdou']) {
+      for (final source in ['wuwu', 'uku', 'zy1080', 'hongdou']) {
         expect(SourceSite.isKnown(source), isFalse);
         expect(SourceSite.isAvailable(source), isFalse);
       }
@@ -196,7 +196,7 @@ void main() {
             .where((source) => !SourceSite.isAvailable(source.id))
             .map((source) => source.id),
         'unknown',
-        'xiaopingguo',
+        'wuwu',
         'hongdou',
       ];
       for (final source in denied) {

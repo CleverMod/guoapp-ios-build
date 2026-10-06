@@ -105,18 +105,6 @@ func (c *attachedClient) htmlCatalogPath(page int, cat attachedCategory, query s
 		}
 		return path, true
 
-	case "wuwu":
-		path := "/index.php/vod/type/id/1.html"
-		if cat.value != "" && cat.value != "全部" {
-			path = "/index.php/vod/show/class/" + url.PathEscape(cat.value) + "/id/1.html"
-		}
-		if query != "" {
-			path = "/index.php/vod/search/wd/" + url.PathEscape(query) + ".html"
-		}
-		if page > 1 {
-			path += "?page=" + pg
-		}
-		return path, true
 	}
 	return "", false
 }
@@ -128,11 +116,6 @@ func (c *attachedClient) htmlCardID(address string) string {
 	path := parsed.Path
 	switch c.p.id {
 
-	case "wuwu":
-		re := regexp.MustCompile(`^/index\.php/vod/detail/id/([0-9]+)\.html$`)
-		if match := re.FindStringSubmatch(path); len(match) > 1 {
-			return match[1]
-		}
 	case "batvideo":
 		if path == "/video.php" && webProviderNumericID.MatchString(parsed.Query().Get("id")) {
 			return parsed.Query().Get("id")
@@ -259,8 +242,6 @@ func (c *attachedClient) htmlCatalog(ctx context.Context, page int, cat attached
 func (c *attachedClient) htmlDetailPath(id string) string {
 	switch c.p.id {
 
-	case "wuwu":
-		return "/index.php/vod/detail/id/" + url.PathEscape(id) + ".html"
 	case "batvideo":
 		return "/video.php?id=" + url.QueryEscape(id)
 
@@ -321,13 +302,6 @@ func (c *attachedClient) htmlDetail(ctx context.Context, id string) (Drama, []Ch
 		label := providerHTMLText(link)
 		switch c.p.id {
 
-		case "wuwu":
-			re := regexp.MustCompile(`^/index\.php/vod/play/id/` + regexp.QuoteMeta(id) + `/sid/([0-9]+)/nid/([0-9]+)\.html$`)
-			if match := re.FindStringSubmatch(target); len(match) > 2 {
-				number, _ := strconv.Atoi(match[2])
-				add(match[1]+"-"+match[2], number, label, href)
-			}
-
 		case "dj91":
 			prefix := "/" + id + "/"
 
@@ -352,25 +326,6 @@ func (c *attachedClient) htmlDetail(ctx context.Context, id string) (Drama, []Ch
 				break
 			}
 		}
-	}
-	if c.p.id == "wuwu" {
-		best := ""
-		for _, chapter := range chapters {
-			key := strings.TrimPrefix(chapter.ID, providerDramaID(c.p.id, id)+":")
-			line, _, _ := strings.Cut(key, "-")
-			if best == "" {
-				best = line
-			}
-		}
-		selected := []Chapter{}
-		for _, chapter := range chapters {
-			key := strings.TrimPrefix(chapter.ID, providerDramaID(c.p.id, id)+":")
-			line, _, _ := strings.Cut(key, "-")
-			if line == best {
-				selected = append(selected, chapter)
-			}
-		}
-		chapters = selected
 	}
 	sort.SliceStable(chapters, func(i, j int) bool { return attachedEpisodeNumber(chapters[i]) < attachedEpisodeNumber(chapters[j]) })
 	drama := c.drama(row, id)
@@ -441,21 +396,6 @@ func (c *attachedClient) htmlPlay(ctx context.Context, id, key string, chapter C
 			} else {
 				address = ""
 			}
-		}
-	}
-	if address == "" && c.p.id == "wuwu" {
-		pattern := regexp.MustCompile(`(?i)["']url["']\s*:\s*["']([^"']+)["']`)
-		if match := pattern.FindStringSubmatch(body); len(match) > 1 {
-			address = strings.ReplaceAll(match[1], `\/`, "/")
-			if !isProviderHTTPMediaURL(address) {
-				plain, err := base64.StdEncoding.DecodeString(address)
-				if err == nil {
-					address = string(plain)
-				}
-			}
-		}
-		if address == "" {
-			address = attachedMediaURL.FindString(body)
 		}
 	}
 	if address == "" {

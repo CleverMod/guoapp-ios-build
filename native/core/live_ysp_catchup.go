@@ -27,12 +27,10 @@ func yspLiveChannels() []yspChannel {
 			channel.CatchupDays = 7
 		}
 		switch {
-		case strings.HasSuffix(channel.ID, "ws"):
-			channel.Group = "卫视频道"
-		case strings.Contains(channel.ID, "jc") || channel.ID == "guoxue":
-			channel.Group = "数字频道"
+		case strings.HasPrefix(channel.ID, "cctv") || strings.HasPrefix(channel.ID, "cgtn"):
+			channel.Group = "央视"
 		default:
-			channel.Group = "央视频道"
+			channel.Group = "卫视"
 		}
 	}
 	return channels
@@ -222,6 +220,7 @@ var yspCatchupSupported = map[string]bool{
 	"cctv6":    true,
 	"cctv7":    true,
 	"cctv8":    true,
+	"cctv8k":   true,
 	"cctv9":    true,
 	"cetv1":    true,
 	"cgtn":     true,

@@ -47,6 +47,7 @@ type attachedClient struct {
 	csjToken  string
 	csjExpiry time.Time
 	transport http.RoundTripper
+	imported  importedSourceState
 }
 
 func attachedProviderByID(id string) (attachedProvider, bool) {
@@ -96,6 +97,9 @@ func (p attachedProvider) category(id string) (attachedCategory, bool) {
 		if cat.id == id {
 			return cat, true
 		}
+	}
+	if p.kind == "imported" && id != "" && len(id) <= 128 && !strings.ContainsAny(id, "|/\\\x00\r\n") {
+		return attachedCategory{id: id, value: id}, true
 	}
 	return attachedCategory{}, false
 }
@@ -312,6 +316,13 @@ func (d *Downloader) fetchAttachedCategories(ctx context.Context, source string)
 	if !ok {
 		return nil, errors.New("请选择有效站源")
 	}
+	if p.kind == "imported" {
+		c, err := d.attachedClient(source)
+		if err != nil {
+			return nil, err
+		}
+		return c.importedCategories(ctx)
+	}
 	var values []nativeCategory
 	for _, entry := range p.categories {
 		values = append(values, nativeCategory{ID: entry.id, Name: entry.name})
@@ -331,6 +342,9 @@ func (d *Downloader) fetchAttachedCatalogPage(ctx context.Context, source string
 	if query != "" && !c.p.search {
 		return nil, false, errors.New("此站源仅支持已加载目录内搜索")
 	}
+	if c.p.kind == "imported" {
+		return c.importedCatalog(ctx, page, cat, query)
+	}
 	if c.p.kind == "html" {
 		return c.htmlCatalog(ctx, page, cat, query)
 	}
@@ -344,6 +358,9 @@ func (d *Downloader) fetchAttachedDetail(ctx context.Context, source, id string)
 	}
 	if id == "" || len(id) > 512 || strings.ContainsAny(id, "\x00\r\n") {
 		return Drama{}, nil, errors.New("站源剧集标识无效")
+	}
+	if c.p.kind == "imported" {
+		return c.importedDetail(ctx, id)
 	}
 	if c.p.kind == "html" {
 		return c.htmlDetail(ctx, id)
@@ -365,12 +382,15 @@ func (d *Downloader) resolveAttachedMedia(ctx context.Context, task Task) (provi
 		if chapter.ID != task.Chapter.ID {
 			continue
 		}
+		if c.p.kind == "imported" && task.Chapter.Title != "" && chapter.Title != task.Chapter.Title {
+			return providerMedia{}, errors.New("此线路或章节已调整，请刷新详情后重试")
+		}
 		key := strings.TrimPrefix(chapter.ID, providerDramaID(source, id)+":")
 		media, err := c.play(ctx, id, key, chapter)
 		if err != nil {
 			return providerMedia{}, err
 		}
-		if media.Referer == "" && source != "niuniudj" && source != "qixing" {
+		if media.Referer == "" && source != "niuniudj" && source != "qixing" && c.p.kind != "imported" {
 			media.Referer = c.p.base + "/"
 		}
 		if media.credentials == nil {

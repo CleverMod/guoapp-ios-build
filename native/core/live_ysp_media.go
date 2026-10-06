@@ -171,10 +171,16 @@ func (live *yspLiveServer) serveMedia(w http.ResponseWriter, r *http.Request, se
 	}
 	response, err := client.Do(request)
 	if err != nil {
+		if ctx.Err() == nil {
+			live.forget(session.channel)
+		}
 		http.Error(w, "直播分片请求失败", http.StatusBadGateway)
 		return
 	}
 	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		live.forget(session.channel)
+	}
 	for _, key := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
 		if value := response.Header.Get(key); value != "" {
 			w.Header().Set(key, value)
