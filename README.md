@@ -12,7 +12,7 @@ Python 站源导入实验版 `0.2.100+107` 完整保存在 `feature/python-sourc
 
 附件中的密钥、请求头及协议参数已迁入私有构建输入，删除五五授权并保留其他已有授权。全源构建校验五个新源所需输入，缺失时停止；纯源码镜像和 ZIP 不包含授权。已有央视频 v8.1 工作区改动及相关依赖继续保留。iOS 构建流程新增附件源 Go 回归及 Flutter 站源可见性、旧权限迁移检查。
 
-本轮接口相关 Go 回归、修改 Dart 静态分析、格式检查、`go vet` 和 Python 构建脚本测试通过（Python 19 项，2 项因本机未安装 CMake 跳过）；同时修正镜像锁文件的 CRLF 匹配及测试中的 Windows 系统探测 mock。全量 Go 测试仍在既有红果 / 黄果目录测试中失败；已用未修改的 `2fc3e60` 复现目录新鲜度和红果游标停滞两项，不能标注全量回归通过。Flutter 自动化将在 macOS 构建阶段执行，本机没有可用的完整 Flutter 测试运行环境。
+本轮接口相关 Go 回归、修改 Dart 静态分析、格式检查、`go vet` 和 Python 构建脚本测试通过（Python 19 项，2 项因本机未安装 CMake 跳过）；同时修正镜像锁文件的 CRLF 匹配及测试中的 Windows 系统探测 mock。全量 Go 测试仍在既有红果 / 黄果目录测试中失败；已用未修改的 `2fc3e60` 复现目录新鲜度和红果游标停滞两项，不能标注全量回归通过。macOS 构建阶段已执行 Flutter 站源、权限迁移及备份恢复自动化，默认版及全源版各 12 项通过。修正一处旧测试在红果版恢复备份后仍要求显示其他源收藏的断言，并增加恢复后再次导出备份的记录保留检查；应用收藏与备份实现未修改。
 
 2026-10-07 的真实接口检查仅请求 API、网页文本、HLS 清单和媒体 HEAD，未读取站源图片或下载完整视频：
 
@@ -26,7 +26,7 @@ Python 站源导入实验版 `0.2.100+107` 完整保存在 `feature/python-sourc
 | 影探4K | 41 | 20 | 1 | 5 | 内置解析接口 HTTP 403，返回当前请求端被限时封禁；播放未通过 |
 | 七味 | 5（内置） | 0 | 未完成 | 未完成 | 附件备用域名返回验证页、证书错误、跳转页或 HTTP 404 |
 
-真实检查记录保存在本地 `dist/diagnostics/source-import-0.2.102/`，不含请求密钥。上述 HEAD 检查不代表 iPhone 真机播放验收；影探4K 和七味的检查结果保留作排除依据，本次安装包不含这两个源。用户已授权使用独立公开构建分支运行 macOS 测试和打包，构建结果将在完成后记录。
+真实检查记录保存在本地 `dist/diagnostics/source-import-0.2.102/`，不含请求密钥。上述 HEAD 检查不代表 iPhone 真机播放验收；影探4K 和七味的检查结果保留作排除依据，本次安装包不含这两个源。用户授权的独立公开分支 `build/ipa-0.2.102-five-sources` 已完成 macOS 测试和未签名 IPA 打包，具体结果见 iOS 成品核验记录。牛牛视频复查曾遇到一次 HTTP 502，后续同一提交复查重新取得目录、搜索、详情和媒体 HEAD 200；源站瞬时网络状态仍可能变化。
 
 `0.2.101+108` 在 `main` 对照用户提供的 [ysp-live v8.1 源码](https://garysclub.sharewithyou.dpdns.org/others/ysp-live-v8.1.zip) 更新电视直播。风云剧场、第一剧场、怀旧剧场 SID 分别更新为 `2025637102`、`2026874202`、`2026874302`；64 个频道调整为「央视」30 路、「卫视」34 路，EPG 标识、26 个设备 LiveID 和 53 个频道的七天回看配置与原包保持一致，新增 CCTV-8K 回看入口。前三层取流失败后使用新增的 Web 授权、AES cKey、SDK 签名和播放凭据流程兜底；原包的两个 WebAssembly 签名模块由 Go 解释器直接执行，应用无需安装或启动 Node.js。Web 分片、密钥和初始化资源由既有本机端口转发，保留媒体序列和切线边界。最近 15 秒的成功直播清单可供换台复用，返回后在后台刷新；回看独立请求所选时段，分片失败会清除该频道缓存。
 
@@ -315,6 +315,8 @@ python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 2026-10-05：[更新 ysp-live v6.0 后的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37253846018)，构建源码 `9a3d29b`，产物 `zhenguojian-0.2.88+95-ios-unsigned.ipa`，30,548,554 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。包内确认包含 64 个频道、26 个新版设备频道 ID、持久化身份、设备注册与加密取流、签名媒体本机转发，以及新增甘肃卫视。保留上一版直播导航、控制栏自动隐藏、连续清单及有限恢复修复。沿用已有 Actions Secret，构建日志确认黄果旧版共享会话已提供，成品内置变量长度为 588 字节、非空，未读取凭据正文。依赖锁文件、修改文件 Dart 格式、iOS 编译、FFI 入口、IPA 包结构、版本、arm64 架构、未签名状态、ZIP 完整性与 SHA-256 检查通过；10 个主要媒体库与 `0.2.87` 逐字节一致。SHA-256 为 `d5a30ce9114d6157e6d206edda236ff8ac875eb456d8d5c47ae9a8a768589281`，本地包为 `dist/ios/真果鉴-0.2.88-直播源v6版.ipa`。未执行自动化测试、实际取流、长时间直播或 iPhone 真机验收；高码率和真 4K 仍待设备验证。
 
 2026-10-05：[接入量子和囧次元后的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37270101861)，构建源码 `c26eab7`，产物 `zhenguojian-0.2.89+96-ios-unsigned.ipa`，30,558,370 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。成品确认 Go 全站源标记为 `true`，包含两个新源的分类、目录、详情、播放解析函数及 Dart 站源登记。保留原有站源业务和电视直播实现；Flutter、MPV 和主要 FFmpeg 库共 10 个二进制与 `0.2.88` 逐字节一致。沿用已有黄果旧版共享会话 Secret，构建日志确认已提供，成品内置变量长度为 588 字节、非空，仅校验长度而未读取凭据正文。依赖锁文件、修改文件 Dart 格式、iOS 编译、FFI 入口、IPA 包结构、版本、arm64 架构、未签名状态、ZIP 完整性与产物 SHA-256 检查通过。SHA-256 为 `5e34287cca3c974aa9e3f559646b0826facb2508488dace33b74ad2b764e64ce`，本地包为 `dist/ios/真果鉴-0.2.89-新增站源版.ipa`。未执行自动化测试、实际取流、新旧站源播放回归、长时间电视直播或 iPhone 真机验收，保持开发快照状态。用户在本轮开始前反馈该 IPA 实测可播放。
+
+2026-10-07：[五个已验证附件源的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37504316930)，构建源码 `88d49c3`，分支 `build/ipa-0.2.102-five-sources`，产物 `zhenguojian-0.2.102+109-ios-unsigned.ipa`，32,281,636 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。Go 编译、`go vet`、默认及全源接口回归、Python 19 项测试、Dart 格式及默认 / 全源 Flutter 各 12 项站源、权限和备份测试均通过。成品核对全源标记 `true`、62 个底层站源、60 个分组、30 个采集源和 20 个附件源，确认小苹果、洛雪TV、小宝影院、剧迷、牛牛视频的原生协议与前端登记进入包内，五五、U酷、1080资源、影探4K、七味的专用接口地址和解析实现已排除。包内 14 组授权与本地私有输入完全一致；既有黄果共享会话仅检查变量长度 588 字节，未读取正文。已有央视频 v8.1 工作区实现一并进入本次构建。FFI 入口、arm64、版本、最低系统、未签名状态、ZIP 完整性及 Actions SHA-256 均核对通过，包内没有 Python 运行环境。SHA-256 为 `907e9060eb11424f40d61c946e9a14cee9782254392e8db8b3f5332ef3a399d3`，本地安装包为 `dist/ios/真果鉴-0.2.102-五源接入版.ipa`，核验记录为 `dist/ios/verification-0.2.102+109.json`。五源真实接口及媒体 HEAD 结果为 `dist/diagnostics/source-import-0.2.102/five-source-verified.json`。该包需自行签名安装，尚未执行 iPhone 真机或完整视频播放验收；原有全量 Go 目录测试的基线失败仍保留，本轮没有修改这些业务模块或标注全量回归通过。
 
 2026-10-06：[修复多源播放并删除 15 个源后的 iOS 构建成功](https://github.com/youniube/guoapp-ios-build/actions/runs/37407070477)，构建源码 `9ce0a95`，产物 `zhenguojian-0.2.98+105-ios-unsigned.ipa`，31,014,005 字节，应用名「真果鉴」，Bundle ID `com.duanju.duanjuApp`，最低 iOS 15.1。成品全源标记为 `true`，保留 60 个站源、58 个分组和 16 个附件源；核对已删除 15 个源的专用接口地址及野果专线调用函数，前端活跃登记与源码一致。确认新增牛牛 CSJ 签名、加解密、访客授权和媒体解析函数及黄豆内置密钥调用进入原生程序。包内 9 组授权配置与项目私有输入完全一致，包含薏米原私钥与保持原字节的签名查询串、牛牛 AES/HMAC 和登录请求模板、原登录设备参数及请求头；导入授权功能继续保持删除。沿用已有黄果旧版共享会话，包内变量长度为 588 字节，未读取该会话正文。Flutter、MPV 和主要 FFmpeg 库共 10 个二进制与 `0.2.97` 完全一致。依赖锁文件、Dart 格式、iOS 编译、FFI 入口、版本、arm64、未签名状态、ZIP 完整性及 SHA-256 检查通过。SHA-256 为 `282587c4f04dbc1106b7518adc4004dc9bac01c780a0f1ce304ce3b490c2dfd6`，本地包为 `dist/ios/真果鉴-0.2.98-多源播放修复-精简版.ipa`，成品核对记录为 `dist/ios/verification-0.2.98+105.json`；本机针对 8 个源的接口及媒体请求诊断记录为 `dist/diagnostics/source-fix-0.2.98/source-playback-diagnostics.json`，授权对照记录为同目录的 `authorization-parity.json`。五五样本在大陆直连成功、当前环境代理返回 404；应用继续遵守用户网络设置。未执行全量自动化回归、完整视频播放或 iPhone 真机验收，保持开发快照状态。
 
