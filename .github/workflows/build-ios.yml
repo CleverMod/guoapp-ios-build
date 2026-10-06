@@ -11,10 +11,6 @@ on:
         description: Embed the shared Huangguo legacy session from the repository secret
         type: boolean
         default: false
-      embed_source_access:
-        description: Embed attached source credentials from the encrypted repository secret
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -80,12 +76,10 @@ jobs:
         env:
           EMBED_LEGACY_SESSION: ${{ inputs.embed_legacy_session }}
           HUANGGUO_LEGACY_SESSION: ${{ inputs.embed_legacy_session && secrets.HUANGGUO_LEGACY_SESSION || '' }}
-          EMBED_SOURCE_ACCESS: ${{ inputs.embed_source_access }}
-          GUOAPP_SOURCE_ACCESS: ${{ inputs.embed_source_access && secrets.GUOAPP_SOURCE_ACCESS || '' }}
+          GUOAPP_SOURCE_ACCESS: ${{ secrets.GUOAPP_SOURCE_ACCESS }}
         run: |
-          args=(--all-sources)
+          args=(--all-sources --require-source-access)
           if [[ "$EMBED_LEGACY_SESSION" == "true" ]]; then args+=(--require-legacy-session); fi
-          if [[ "$EMBED_SOURCE_ACCESS" == "true" ]]; then args+=(--require-source-access); fi
           python3 scripts/build_ios.py "${args[@]}"
       - name: Upload IPA and checksums
         uses: actions/upload-artifact@v4

@@ -115,7 +115,6 @@ type nativeInput struct {
 	Action           string                  `json:"action"`
 	Directory        string                  `json:"directory"`
 	Source           string                  `json:"source"`
-	SourceAccess     json.RawMessage         `json:"sourceAccess"`
 	Page             int                     `json:"page"`
 	Query            string                  `json:"query"`
 	Category         string                  `json:"category"`
@@ -287,7 +286,7 @@ func newNativeEngine(directory string) (*nativeEngine, error) {
 		}}
 	engine := &nativeEngine{downloader: d, directory: directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	engine.loadResourceSettings()
-	d.loadAttachedAccess(directory)
+	d.loadAttachedAccess()
 	d.loadRankingCache()
 	engine.loadCatalogCache()
 	engine.loadSourceRecords()
@@ -476,8 +475,6 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return map[string]any{"items": items}, err
 	case "sourceStatus":
 		return engine.sourceStatus(input.Source), nil
-	case "importSourceAccess":
-		return true, engine.importAttachedAccess(input.Source, input.SourceAccess)
 	case "sourceJob":
 		return engine.startSourceTask(input.Source, input.Command, input.Drama)
 	case "cancelSourceJob":

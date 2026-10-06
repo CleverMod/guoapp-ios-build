@@ -12,8 +12,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -66,7 +64,7 @@ func attachedSearchSource(source string) bool {
 	return ok && p.search
 }
 
-func (d *Downloader) loadAttachedAccess(directory string) {
+func (d *Downloader) loadAttachedAccess() {
 	d.attachedAccess = map[string]attachedAccess{}
 	if data, err := base64.StdEncoding.DecodeString(bundledAttachedAccessBase64); err == nil && len(data) <= 256<<10 {
 		_ = json.Unmarshal(data, &d.attachedAccess)
@@ -74,65 +72,6 @@ func (d *Downloader) loadAttachedAccess(directory string) {
 	if d.attachedAccess == nil {
 		d.attachedAccess = map[string]attachedAccess{}
 	}
-	data, err := os.ReadFile(filepath.Join(directory, "source_access.json"))
-	if err == nil && len(data) <= 256<<10 {
-		var local map[string]attachedAccess
-		if json.Unmarshal(data, &local) == nil {
-			for source, access := range local {
-				if isAttachedSource(source) {
-					d.attachedAccess[source] = access
-				}
-			}
-		}
-	}
-}
-
-func (engine *nativeEngine) importAttachedAccess(source string, raw json.RawMessage) error {
-	if !isAttachedSource(source) || len(raw) > 64<<10 {
-		return errors.New("接口授权格式无效")
-	}
-	var access attachedAccess
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&access) != nil {
-		return errors.New("接口授权格式无效")
-	}
-	for k, v := range access.Headers {
-		if !validHTTPHeaderName(k) || strings.ContainsAny(v, "\r\n") {
-			return errors.New("接口授权请求头无效")
-		}
-	}
-	d := engine.downloader
-	d.attachedMu.Lock()
-	defer d.attachedMu.Unlock()
-	next := map[string]attachedAccess{}
-	for key, value := range d.attachedAccess {
-		next[key] = value
-	}
-	next[source] = access
-	data, _ := json.Marshal(next)
-	if len(data) > 256<<10 {
-		return errors.New("接口授权配置过大")
-	}
-	file := filepath.Join(engine.directory, "source_access.json")
-	if err := nativeDownloadWrite(file, data); err != nil {
-		return errors.New("保存接口授权失败")
-	}
-	d.attachedAccess = next
-	delete(d.attachedClients, source)
-	return nil
-}
-
-func validHTTPHeaderName(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", r)) {
-			return false
-		}
-	}
-	return true
 }
 
 func attachedSourceForHost(host string) string {

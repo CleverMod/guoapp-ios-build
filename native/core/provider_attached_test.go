@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -94,22 +93,5 @@ func TestAttachedNuxtReferencesAndOpaqueHLS(t *testing.T) {
 	media, err := c.opaqueHLS(context.Background(), providerMedia{URL: "https://site.example.test/play.php?id=7", Referer: "https://site.example.test/"})
 	if err != nil || media.Playlist == "" || media.Duration == 0 {
 		t.Fatal("opaque playlist was not prepared", err)
-	}
-}
-
-func TestAttachedAccessRejectsInvalidHeadersWithoutReplacingSession(t *testing.T) {
-	d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}")), Request: request}, nil
-	})
-	engine := &nativeEngine{downloader: d, directory: d.cfg.dataDir}
-	if engine.importAttachedAccess("hema", json.RawMessage(`{"headers":{"bad\r\nname":"value"}}`)) == nil {
-		t.Fatal("accepted an invalid header")
-	}
-	if err := engine.importAttachedAccess("hema", json.RawMessage(`{"headers":{"datas":"synthetic-access"}}`)); err != nil {
-		t.Fatal(err)
-	}
-	c, _ := d.attachedClient("hema")
-	if c.access.Headers["datas"] != "synthetic-access" {
-		t.Fatal("access was not restored")
 	}
 }
