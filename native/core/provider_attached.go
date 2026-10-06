@@ -22,6 +22,7 @@ import (
 type attachedAccess struct {
 	Headers    map[string]string `json:"headers,omitempty"`
 	Query      map[string]string `json:"query,omitempty"`
+	Settings   map[string]string `json:"settings,omitempty"`
 	PrivateKey string            `json:"privateKey,omitempty"`
 	SignKey    string            `json:"signKey,omitempty"`
 	DeviceID   string            `json:"deviceId,omitempty"`
@@ -32,17 +33,20 @@ var bundledAttachedAccessBase64 string
 type attachedRequestClientKey struct{}
 
 type attachedClient struct {
-	d      *Downloader
-	p      attachedProvider
-	mu     sync.Mutex
-	jar    http.CookieJar
-	access attachedAccess
-	device string
-	token  string
-	userID string
-	expiry time.Time
-	sid    string
-	skey   []byte
+	d         *Downloader
+	p         attachedProvider
+	mu        sync.Mutex
+	jar       http.CookieJar
+	access    attachedAccess
+	device    string
+	token     string
+	userID    string
+	expiry    time.Time
+	sid       string
+	skey      []byte
+	csjToken  string
+	csjExpiry time.Time
+	transport http.RoundTripper
 }
 
 func attachedProviderByID(id string) (attachedProvider, bool) {
@@ -122,7 +126,14 @@ func (d *Downloader) attachedClient(source string) (*attachedClient, error) {
 	if access.DeviceID != "" && (len(access.DeviceID) < 16 || len(access.DeviceID) > 128 || strings.ContainsAny(access.DeviceID, "\r\n\x00")) {
 		return nil, errors.New("接口授权设备标识格式无效")
 	}
-	c := &attachedClient{d: d, p: p, jar: jar, device: firstNonEmpty(access.DeviceID, attachedNonce()), access: access}
+	device := firstNonEmpty(access.DeviceID, attachedNonce())
+	if source == "niuniudj" && access.DeviceID == "" {
+		device = uuidLike()
+	}
+	c := &attachedClient{d: d, p: p, jar: jar, device: device, access: access}
+	if source == "niuniudj" {
+		c.transport = c.niuniuTransport()
+	}
 	d.attachedClients[source] = c
 	return c, nil
 }
@@ -142,6 +153,9 @@ func (c *attachedClient) raw(ctx context.Context, method, target, contentType, b
 		req.Header.Set("Content-Type", contentType)
 	}
 	client := *c.d.client
+	if c.transport != nil {
+		client.Transport = c.transport
+	}
 	client.Jar = c.jar
 	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
@@ -159,6 +173,9 @@ func (c *attachedClient) raw(ctx context.Context, method, target, contentType, b
 	req = req.WithContext(context.WithValue(req.Context(), attachedRequestClientKey{}, &client))
 	for key, value := range headers {
 		req.Header.Set(key, value)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	response, err := c.d.doCatalogRequestWithTimeout(req, 20*time.Second)
 	if err != nil {
@@ -191,8 +208,7 @@ func (c *attachedClient) agent() string {
 	switch c.p.id {
 	case "weiguan", "hema", "shanhai", "niuniudj", "xifan":
 		return "okhttp/4.10.0"
-	case "baidu":
-		return "Dalvik/2.1.0 (Linux; U; Android 9) baiduboxapp/15.21.0.10"
+
 	}
 	return "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 }
@@ -228,6 +244,26 @@ func attachedAt(value any, keys ...string) any {
 	return value
 }
 
+func attachedFirst(values map[string]any, keys ...string) any {
+	for _, key := range keys {
+		value := values[key]
+		if value == nil {
+			continue
+		}
+		if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+			continue
+		}
+		if rows, ok := value.([]any); ok && len(rows) == 0 {
+			continue
+		}
+		if row, ok := value.(map[string]any); ok && len(row) == 0 {
+			continue
+		}
+		return value
+	}
+	return nil
+}
+
 func attachedRows(value any) []map[string]any { return jsonVideoRows(value) }
 
 func attachedInt(row map[string]any, keys ...string) int {
@@ -251,7 +287,7 @@ func (c *attachedClient) drama(row map[string]any, id string) Drama {
 		}
 	}
 	title := cleanText(mapString(row, "title", "bookName", "name", "playlet_title", "albumTitle", "movieName", "drama_name", "short_play_name"))
-	if id == "" || title == "" || (c.p.id == "batvideo" || c.p.id == "md2048") && attachedBlockedTitle.MatchString(title) {
+	if id == "" || title == "" || (c.p.id == "batvideo") && attachedBlockedTitle.MatchString(title) {
 		return Drama{}
 	}
 	cover := mapString(row, "cover_n", "cover_url", "vertPoster", "horizonPoster", "coverWap", "coverImageUrl", "coverUrl", "playlet_poster", "image_link", "verticalImg", "poster_url", "cover", "img", "icon", "poster", "pic", "image")
@@ -334,11 +370,11 @@ func (d *Downloader) resolveAttachedMedia(ctx context.Context, task Task) (provi
 		if err != nil {
 			return providerMedia{}, err
 		}
-		if media.Referer == "" && source != "damang" {
+		if media.Referer == "" && source != "niuniudj" && source != "qixing" {
 			media.Referer = c.p.base + "/"
 		}
 		if media.credentials == nil {
-			media.credentials = &providerMediaCredentials{userAgent: c.agent(), referer: media.Referer}
+			media.credentials = &providerMediaCredentials{userAgent: firstNonEmpty(c.access.Settings["playUserAgent"], c.agent()), referer: media.Referer}
 		}
 		return d.prepareWebProviderMedia(ctx, media, c.p.name)
 	}

@@ -33,10 +33,11 @@ type huangdouAPIClient struct {
 	host      string
 	sessionID string
 	deviceID  string
+	access    attachedAccess
 }
 
 func newHuangdouAPIClient(d *Downloader) *huangdouAPIClient {
-	id := randomHex(16)
+	id := uuidLike()
 	if id == "" {
 		id = strconv.FormatInt(time.Now().UnixNano(), 16)
 	}
@@ -46,7 +47,7 @@ func newHuangdouAPIClient(d *Downloader) *huangdouAPIClient {
 		host = preferred
 	}
 	d.providerMu.Unlock()
-	return &huangdouAPIClient{d: d, host: host, sessionID: id, deviceID: id}
+	return &huangdouAPIClient{d: d, host: host, sessionID: id, deviceID: id, access: d.attachedAccess[sourceHuangdou]}
 }
 
 func (d *Downloader) fetchHuangdouChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
@@ -90,21 +91,30 @@ func (d *Downloader) resolveHuangdouPlayback(ctx context.Context, client *huangd
 	}
 	data := huangdouDataMap(decoded)
 	media := firstNonEmpty(mapString(data, "m3u8"), mapString(data, "url"), mapString(data, "play_url"), mapString(data, "playUrl"))
-	if huangdouPreviewOnly(data, media, client.host) {
-		return providerMedia{}, &huangdouAPIError{code: "preview", message: "黄豆仅提供试看，未取得该集正片；不会把试看内容当作完整分集"}
-	}
-	if media == "" {
+	preview := huangdouPreviewOnly(data, media, client.host)
+	credentials := &providerMediaCredentials{userAgent: firstNonEmpty(client.access.Headers["User-Agent"], userAgent), referer: client.host + "/home"}
+	playlist := ""
+	if preview || media == "" {
 		media = fmt.Sprintf("%s/api/drama/hls/%s/%d/play.m3u8?line=free", client.host, url.PathEscape(sourceID), seq)
-		playlist, err := d.fetchProviderText(ctx, media, client.host+"/home")
+		var err error
+		playlist, media, err = d.fetchMediaPlaylist(providerMediaContext(ctx, credentials), media, client.host+"/home")
 		if err != nil || !strings.HasPrefix(strings.TrimSpace(playlist), "#EXTM3U") {
+			if preview {
+				return providerMedia{}, &huangdouAPIError{code: "preview", message: "黄豆仅提供试看，原接口备用清单也未返回正片"}
+			}
 			return providerMedia{}, errors.New("黄豆未提供有效的播放地址，备用播放列表也不可用")
+		}
+		for _, line := range strings.Split(playlist, "\n") {
+			if line != "" && !strings.HasPrefix(line, "#") && huangdouPreviewOnly(nil, strings.TrimSpace(line), client.host) {
+				return providerMedia{}, &huangdouAPIError{code: "preview", message: "黄豆备用清单仍是试看内容"}
+			}
 		}
 	}
 	media = resolveProviderURL(client.host+"/", media)
 	if !isProviderHTTPMediaURL(media) {
 		return providerMedia{}, errors.New("黄豆播放地址不是 HTTP/HTTPS URL")
 	}
-	result := providerMedia{URL: media, Referer: client.host + "/home"}
+	result := providerMedia{URL: media, Referer: client.host + "/home", Playlist: playlist, credentials: credentials}
 	if rawKey := mapString(data, "hls_key"); rawKey != "" {
 		key, err := hex.DecodeString(rawKey)
 		if err != nil || len(key) != aes.BlockSize {
@@ -144,7 +154,7 @@ func (c *huangdouAPIClient) call(ctx context.Context, path string, data map[stri
 			return lastErr
 		}
 		if c.host == huangdouBaseURL && c.d.cfg.HuangdouURL == "" {
-			c.host = "https://xqjurgek.top"
+			c.host = firstNonEmpty(c.access.Settings["fallbackURL"], "https://xqjurgek.top")
 		}
 	}
 	return lastErr
@@ -195,7 +205,7 @@ func huangdouPreviewOnly(data map[string]any, media, host string) bool {
 func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[string]any, out *any) error {
 	path = "/" + strings.TrimLeft(path, "/")
 	rid := uuidLike()
-	key, err := huangdouKey(rid)
+	key, err := huangdouKeyWithPlatform(rid, firstNonEmpty(c.access.SignKey, huangdouPlatformKey))
 	if err != nil {
 		return err
 	}
@@ -203,7 +213,7 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 	if _, err := rand.Read(iv); err != nil {
 		return err
 	}
-	plain, err := json.Marshal(map[string]any{"token": "", "deviceId": c.deviceID, "data": data})
+	plain, err := json.Marshal(map[string]any{"token": c.access.Query["token"], "deviceId": c.deviceID, "data": data})
 	if err != nil {
 		return err
 	}
@@ -229,6 +239,9 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 	req.Header.Set("Origin", c.host)
 	req.Header.Set("Referer", c.host+"/home")
 	req.Header.Set("Content-Type", "application/octet-stream")
+	for name, value := range c.access.Headers {
+		req.Header.Set(name, value)
+	}
 	req.Header.Set("version", huangdouVersion)
 	req.Header.Set("deviceType", huangdouDeviceType)
 	req.Header.Set("requestId", rid)
@@ -273,12 +286,16 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 }
 
 func huangdouKey(rid string) ([]byte, error) {
+	return huangdouKeyWithPlatform(rid, huangdouPlatformKey)
+}
+
+func huangdouKeyWithPlatform(rid, platformKey string) ([]byte, error) {
 	clean := strings.ReplaceAll(rid, "-", "")
 	b, err := hex.DecodeString(clean)
 	if err != nil {
 		return nil, err
 	}
-	mac := hmac.New(sha256.New, []byte(huangdouPlatformKey))
+	mac := hmac.New(sha256.New, []byte(platformKey))
 	_, _ = mac.Write(b)
 	return mac.Sum(nil), nil
 }

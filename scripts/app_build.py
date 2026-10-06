@@ -64,9 +64,9 @@ def source_access_flags(path=None, required=False):
         for source, access in config.items():
             if not isinstance(source, str) or not isinstance(access, dict):
                 raise ValueError()
-            if set(access) - {'headers', 'query', 'privateKey', 'signKey', 'deviceId'}:
+            if set(access) - {'headers', 'query', 'settings', 'privateKey', 'signKey', 'deviceId'}:
                 raise ValueError()
-            for key in ('headers', 'query'):
+            for key in ('headers', 'query', 'settings'):
                 values = access.get(key, {})
                 if not isinstance(values, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in values.items()):
                     raise ValueError()

@@ -37,8 +37,7 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
 	case sourceYeguo:
 		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
-	case sourceYeguoWorker:
-		configured, fallback = d.cfg.YeguoWorkerURL, yeguoWorkerBaseURL
+
 	case sourceDSD:
 		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	case sourceSorani:
@@ -87,8 +86,6 @@ func providerSourceForURL(raw string) string {
 		strings.HasSuffix(host, ".fzchosdi.cc") ||
 		host == "delta.ygrwdsgt.cc":
 		return sourceYeguo
-	case host == "yeguodj.com" || host == "www.yeguodj.com":
-		return sourceYeguoWorker
 	case host == "dsd.com.se" || host == "www.dsd.com.se":
 		return sourceDSD
 	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
@@ -154,9 +151,6 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceYeguo {
 		return d.resolveYeguoMedia(ctx, task)
-	}
-	if chapter.Source == sourceYeguoWorker {
-		return d.resolveYeguoWorkerMedia(ctx, task)
 	}
 	if isAttachedSource(chapter.Source) {
 		return d.resolveAttachedMedia(ctx, task)

@@ -30,7 +30,6 @@ type Config struct {
 	HuangjuAPIURL    string
 	YeguoURL         string
 	YeguoAPIURL      string
-	YeguoWorkerURL   string
 	DSDURL           string
 	SoraniURL        string
 	SoraniAPIURL     string
@@ -598,15 +597,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
-	if query != "" && (source == sourceYeguoWorker || attachedSearchSource(source)) {
-		var items []Drama
-		var more bool
-		var err error
-		if source == sourceYeguoWorker {
-			items, more, err = d.fetchYeguoWorkerCatalogPage(ctx, page, "", query)
-		} else {
-			items, more, err = d.fetchAttachedCatalogPage(ctx, source, page, "", query)
-		}
+	if query != "" && attachedSearchSource(source) {
+		items, more, err := d.fetchAttachedCatalogPage(ctx, source, page, "", query)
 		if err != nil {
 			return result, err
 		}
@@ -699,7 +691,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	case sourceHuangdou:
 		client := newHuangdouAPIClient(d)
 		var decoded any
-		err = client.call(ctx, "/drama/list", map[string]any{"page": strconv.Itoa(page), "page_size": "30"}, &decoded)
+		err = client.call(ctx, "/drama/rank", map[string]any{"tab": firstNonEmpty(category, "all"), "page": strconv.Itoa(page)}, &decoded)
 		if err == nil {
 			rows := huangdouList(decoded)
 			for _, row := range rows {
@@ -715,8 +707,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items, result.HasMore, err = d.fetchHuangjuCatalogPage(ctx, page, category, "")
 	case sourceYeguo:
 		items, result.HasMore, err = d.fetchYeguoCatalogPage(ctx, page, category, "")
-	case sourceYeguoWorker:
-		items, result.HasMore, err = d.fetchYeguoWorkerCatalogPage(ctx, page, category, "")
+
 	case sourceDSD:
 		items, result.HasMore, err = d.fetchDSDCatalogPage(ctx, page, category, "")
 	case sourceSorani:
@@ -788,8 +779,7 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = engine.downloader.fetchHuangjuDetail(ctx, sourceID)
 	case sourceYeguo:
 		raw, chapters, err = engine.downloader.fetchYeguoDetail(ctx, sourceID)
-	case sourceYeguoWorker:
-		raw, chapters, err = engine.downloader.fetchYeguoWorkerDetail(ctx, sourceID)
+
 	case sourceDSD:
 		raw, chapters, err = engine.downloader.fetchDSDDetail(ctx, sourceID)
 	case sourceSorani:

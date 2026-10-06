@@ -26,7 +26,6 @@ const (
 	sourceHongguo       = "hongguo"
 	sourceHuangju       = "huangju"
 	sourceYeguo         = "yeguo"
-	sourceYeguoWorker   = "yeguo-worker"
 	sourceDSD           = "dsd"
 	sourceCloudFront    = "cloudfront"
 	sourceSorani        = "sorani"
@@ -98,7 +97,7 @@ func isHuangguoProviderSource(source string) bool {
 	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceXifu:
 		return true
 	default:
-		return isMaccmsSource(source) || isAttachedSource(source) || source == sourceYeguoWorker
+		return isMaccmsSource(source) || isAttachedSource(source)
 	}
 }
 
@@ -116,8 +115,7 @@ func canonicalProviderSource(source string) string {
 		return sourceHuangju
 	case "yeguo", "ygdj7.com", "www.ygdj7.com", "analyze.buxefaex.cc", "delta.ygrwdsgt.cc":
 		return sourceYeguo
-	case "yeguo-worker", "yeguodj.com", "www.yeguodj.com":
-		return sourceYeguoWorker
+
 	case "dsd", "dsd.com.se", "www.dsd.com.se":
 		return sourceDSD
 	case "cloudfront":
@@ -253,9 +251,7 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 	case sourceYeguo:
 		drama, chapters, err := d.fetchYeguoDetail(ctx, sourceID)
 		return drama.DisplayTitle(), chapters, err
-	case sourceYeguoWorker:
-		drama, chapters, err := d.fetchYeguoWorkerDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
+
 	case sourceDSD:
 		drama, chapters, err := d.fetchDSDDetail(ctx, sourceID)
 		return drama.DisplayTitle(), chapters, err

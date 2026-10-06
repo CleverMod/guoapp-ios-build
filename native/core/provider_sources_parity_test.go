@@ -91,8 +91,8 @@ func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
 		}
 	}
 	for _, address := range []string{"https://yeguodj.com/", "https://www.yeguodj.com/"} {
-		if providerSourceForURL(address) != sourceYeguoWorker {
-			t.Fatal("restored worker alias mismatch", address)
+		if providerSourceForURL(address) != "" {
+			t.Fatal("retired worker alias remains", address)
 		}
 	}
 }

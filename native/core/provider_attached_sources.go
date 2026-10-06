@@ -11,13 +11,7 @@ type attachedProvider struct {
 }
 
 var attachedProviders = []attachedProvider{
-	{id: "xiaobao", name: "小宝影院", base: "https://www.xiaobaotv.com", kind: "html", search: true, categories: []attachedCategory{
-		{"1", "电影", "1", ""},
-		{"2", "电视剧", "2", ""},
-		{"3", "动漫", "3", ""},
-		{"4", "综艺", "4", ""},
-		{"11", "短剧", "11", ""},
-	}},
+
 	{id: "batvideo", name: "蝙蝠视频", base: "https://257915.xyz", kind: "html", search: true, categories: []attachedCategory{
 		{"64360061", "线路1·中文字幕", "64360061", ""},
 		{"64370061", "线路1·网红主播", "64370061", ""},
@@ -146,30 +140,7 @@ var attachedProviders = []attachedProvider{
 		{"gongdou", "宫斗宅斗", "2006", ""},
 		{"xuanhuan", "玄幻", "2009", ""},
 	}},
-	{id: "baidu", name: "百度", base: "https://mbd.baidu.com", kind: "api", search: false, categories: []attachedCategory{
-		{"quanbu", "全部", "quanbu", ""},
-		{"shenyi", "神医", "shenyi", ""},
-		{"dushi", "都市", "dushi", ""},
-		{"xiandaiyanqing", "现代言情", "xiandaiyanqing", ""},
-		{"yineng", "异能", "yineng", ""},
-		{"nixi", "逆袭", "nixi", ""},
-		{"tianchong", "甜宠", "tianchong", ""},
-		{"zongcai", "总裁", "zongcai", ""},
-		{"mengbao", "萌宝", "mengbao", ""},
-		{"zhanshen", "战神", "zhanshen", ""},
-		{"gongdouzhaidou", "宫斗宅斗", "gongdouzhaidou", ""},
-		{"shenhao", "神豪", "shenhao", ""},
-		{"nuelian", "虐恋", "nuelian", ""},
-		{"shanhun", "闪婚", "shanhun", ""},
-		{"xuanhuan", "玄幻", "xuanhuan", ""},
-		{"chuanyuechongsheng", "穿越重生", "chuanyuechongsheng", ""},
-		{"niandai", "年代", "niandai", ""},
-		{"jiatinglunli", "家庭伦理", "jiatinglunli", ""},
-		{"gudaiyanqing", "古代言情", "gudaiyanqing", ""},
-		{"wuxiawuda", "武侠武打", "wuxiawuda", ""},
-		{"zhuixu", "赘婿", "zhuixu", ""},
-		{"qingchunxiaoyuan", "青春校园", "qingchunxiaoyuan", ""},
-	}},
+
 	{id: "xingya", name: "星芽", base: "https://app.whjzjx.cn", kind: "api", search: true, categories: []attachedCategory{
 		{"juchang", "剧场", "1", ""},
 		{"reboduanju", "热播剧", "2", ""},
@@ -241,17 +212,7 @@ var attachedProviders = []attachedProvider{
 		{"793", "搞笑", "793", ""},
 		{"1287", "灵异", "1287", ""},
 	}},
-	{id: "damang", name: "大芒", base: "https://damang.api.mgtv.com", kind: "api", search: true, categories: []attachedCategory{
-		{"aiqing", "爱情", "1273154", ""},
-		{"dushi", "都市", "1279863", ""},
-		{"guzhuang", "古装", "1273153", ""},
-		{"yanqing", "言情", "1273190", ""},
-		{"qihuan", "奇幻", "2924543", ""},
-		{"zhenrenxiu", "真人秀", "1657120", ""},
-		{"xuanyi", "悬疑", "1310272", ""},
-		{"wangju", "网剧", "2844459", ""},
-		{"qingchun", "青春", "2836677", ""},
-	}},
+
 	{id: "xifan", name: "西饭", base: "https://xifan-api-cn.youlishipin.com", kind: "api", search: true, categories: []attachedCategory{
 		{"dushi", "都市", "68@都市", ""},
 		{"qingchun", "青春", "68@青春", ""},
@@ -262,11 +223,7 @@ var attachedProviders = []attachedProvider{
 		{"dalianuecha", "打脸虐渣", "79@打脸虐渣", ""},
 		{"chuanyue", "穿越", "81@穿越", ""},
 	}},
-	{id: "xingxing", name: "星星", base: "http://read.api.duodutek.com", kind: "api", search: false, categories: []attachedCategory{
-		{"jingxuan", "精选", "1287", ""},
-		{"remen", "热门", "1288", ""},
-		{"xinju", "新剧", "1289", ""},
-	}},
+
 	{id: "yimi", name: "薏米", base: "https://yimi-api.zhangyue.com", kind: "api", search: false, categories: []attachedCategory{
 		{"jingxuan", "精选", "channel_c6f50cd9", ""},
 		{"nixi", "逆袭", "channel_a8e10abc", ""},
@@ -280,13 +237,7 @@ var attachedProviders = []attachedProvider{
 		{"xuanyi", "悬疑", "channel_861b9642", ""},
 		{"lishi", "历史", "channel_18157927", ""},
 	}},
-	{id: "wusheng", name: "悟圣", base: "http://read.api.duodutek.com", kind: "api", search: false, categories: []attachedCategory{
-		{"1287", "甜宠", "1287", ""},
-		{"1288", "逆袭", "1288", ""},
-		{"1289", "热血", "1289", ""},
-		{"1290", "现代", "1290", ""},
-		{"1291", "古代", "1291", ""},
-	}},
+
 	{id: "qixing", name: "七星", base: "https://app.whjzjx.cn", kind: "api", search: true, categories: []attachedCategory{
 		{"1", "剧场", "1", ""},
 		{"3", "新剧", "3", ""},
@@ -294,15 +245,7 @@ var attachedProviders = []attachedProvider{
 		{"7", "星选", "7", ""},
 		{"5", "阳光", "5", ""},
 	}},
-	{id: "kuwo", name: "酷我", base: "http://wapi.kuwo.cn/openapi/v1/shortplay", kind: "api", search: false, categories: []attachedCategory{
-		{"10", "猜你想看", "10", ""},
-		{"11", "土味爱情", "11", ""},
-		{"12", "更多精彩", "12", ""},
-		{"13", "霸道总裁的人生", "13", ""},
-		{"14", "赘婿当道", "14", ""},
-		{"15", "漫漫追妻路", "15", ""},
-		{"16", "家庭情感", "16", ""},
-	}},
+
 	{id: "niuniudj", name: "牛牛短剧", base: "https://new.tianjinzhitongdaohe.com", kind: "api", search: true, categories: []attachedCategory{
 		{"现言", "现言", "现言", ""},
 		{"古言", "古言", "古言", ""},
@@ -318,17 +261,7 @@ var attachedProviders = []attachedProvider{
 		{"二次元", "二次元", "二次元", ""},
 		{"其他剧情", "其他剧情", "其他剧情", ""},
 	}},
-	{id: "souju", name: "搜剧AI", base: "https://souju.ai", kind: "api", search: true, categories: []attachedCategory{
-		{"脑洞悬疑", "脑洞悬疑", "脑洞悬疑", ""},
-		{"古装仙侠", "古装仙侠", "古装仙侠", ""},
-		{"现代都市", "现代都市", "现代都市", ""},
-		{"女频恋爱", "女频恋爱", "女频恋爱", ""},
-		{"言情总裁", "言情总裁", "言情总裁", ""},
-		{"年代穿越", "年代穿越", "年代穿越", ""},
-		{"现代言情", "现代言情", "现代言情", ""},
-		{"反转爽剧", "反转爽剧", "反转爽剧", ""},
-		{"重生民国", "重生民国", "重生民国", ""},
-	}},
+
 	{id: "wuwu", name: "五五", base: "https://www.duanju55.com", kind: "html", search: true, categories: []attachedCategory{
 		{"全部", "全部", "全部", ""},
 		{"男频", "男频", "男频", ""},
@@ -343,49 +276,7 @@ var attachedProviders = []attachedProvider{
 		{"悬疑", "悬疑", "悬疑", ""},
 		{"奇幻", "奇幻", "奇幻", ""},
 	}},
-	{id: "huangdou2", name: "黄豆2", base: "https://aihuangdou.com", kind: "html", search: true, categories: []attachedCategory{
-		{"home", "首页", "home", ""},
-		{"ai-duanju", "AI短剧", "ai-duanju", ""},
-		{"ai-manju", "AI漫剧", "ai-manju", ""},
-		{"rankings", "榜单", "rankings", ""},
-	}},
-	{id: "dj51", name: "51短剧", base: "https://arab.bqdikpcrx.cc", kind: "html", search: false, categories: []attachedCategory{
-		{"rank", "总榜", "rank", "/rank/"},
-		{"new", "最新剧场", "new", "/new-theater-category/"},
-		{"tag:51原创", "51原创", "tag:51原创", "/tag/51原创/"},
-		{"tag:AI短剧", "AI短剧", "tag:AI短剧", "/tag/AI短剧/"},
-		{"tag:成人", "成人", "tag:成人", "/tag/成人/"},
-		{"tag:原创", "原创", "tag:原创", "/tag/原创/"},
-	}},
-	{id: "chengguo", name: "橙果", base: "https://chengguodj.com", kind: "html", search: true, categories: []attachedCategory{
-		{"yuanchuang", "原创", "yuanchuang", "/yuanchuang"},
-		{"mogai", "魔改", "mogai", "/mogai"},
-		{"manju", "漫剧", "manju", "/manju"},
-		{"zhenren", "真人", "zhenren", "/zhenren"},
-		{"aiduanju", "AI短剧", "aiduanju", "/aiduanju"},
-		{"browse", "全部", "browse", "/browse"},
-	}},
-	{id: "xiangjiao", name: "香蕉", base: "https://xiangjiaoai.ai", kind: "api", search: true, categories: []attachedCategory{
-		{"hot", "精选推荐", "hot", ""},
-		{"theater", "全部剧场", "theater", ""},
-		{"cat:明星换脸", "明星换脸", "cat:明星换脸", ""},
-		{"cat:影视魔改", "影视魔改", "cat:影视魔改", ""},
-		{"cat:动漫游戏", "动漫游戏", "cat:动漫游戏", ""},
-		{"cat:穿越重生", "穿越重生", "cat:穿越重生", ""},
-		{"cat:系统异能", "系统异能", "cat:系统异能", ""},
-		{"cat:仙侠修真", "仙侠修真", "cat:仙侠修真", ""},
-		{"cat:古装权谋", "古装权谋", "cat:古装权谋", ""},
-	}},
-	{id: "huanggua", name: "黄瓜", base: "https://hgdju4.com", kind: "html", search: false, categories: []attachedCategory{
-		{"recommend", "推荐", "recommend", "/"},
-		{"yuanchuang", "原创", "yuanchuang", "/yuanchuang"},
-		{"mogai", "魔改", "mogai", "/mogai"},
-		{"manju", "AI漫剧", "manju", "/manju"},
-		{"zhenren", "真人短剧", "zhenren", "/zhenren"},
-		{"aiduanju", "AI短剧", "aiduanju", "/aiduanju"},
-		{"browse", "全部", "browse", "/browse"},
-		{"browse-new", "最新", "browse-new", "/browse?sort=new"},
-	}},
+
 	{id: "kuangbiao", name: "狂飙", base: "https://ai.dramarush.tv", kind: "api", search: false, categories: []attachedCategory{
 		{"t-5jxcit", "短剧", "t-5jxcit", ""},
 		{"normal_short", "正规短剧", "normal_short", ""},
@@ -399,18 +290,7 @@ var attachedProviders = []attachedProvider{
 		{"paihang", "排行", "paihang", ""},
 		{"biaoqian:aiduanju", "AI短剧", "biaoqian:aiduanju", ""},
 	}},
-	{id: "md2048", name: "2048", base: "https://2048ai.vip", kind: "api", search: false, categories: []attachedCategory{
-		{"cat-29", "AI短剧", "cat-29", ""},
-		{"cat-6", "麻豆原创AI", "cat-6", ""},
-		{"cat-9", "麻豆传媒", "cat-9", ""},
-		{"cat-2", "AV中文字幕", "cat-2", ""},
-		{"cat-14", "重口调教", "cat-14", ""},
-		{"cat-19", "黑料吃瓜", "cat-19", ""},
-	}},
-	{id: "duanjuone", name: "短剧one", base: "https://duanju.one", kind: "html", search: true, categories: []attachedCategory{
-		{"free", "免费", "free", ""},
-		{"vip", "VIP/积分", "vip", ""},
-	}},
+
 	{id: "yizk", name: "一直看", base: "https://1zk.top", kind: "api", search: true, categories: []attachedCategory{
 		{"sqqsfvqirt0c", "华语", "sqqsfvqirt0c", ""},
 		{"jr4jltgb5bct", "东瀛", "jr4jltgb5bct", ""},

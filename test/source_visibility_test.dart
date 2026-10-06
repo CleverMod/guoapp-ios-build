@@ -26,22 +26,22 @@ void main() {
 
     expect(store.configurationError, isNull);
     expect(store.sources.map((site) => site.id), sourceIds);
-    expect(store.sources, hasLength(allSourcesEnabled ? 75 : 1));
+    expect(store.sources, hasLength(allSourcesEnabled ? 60 : 1));
     for (final source in sourceIds) {
       expect(store.allowsSource(source), isTrue);
     }
   });
 
-  test('restored worker permissions survive profile migration', () {
+  test('retired attached source permissions are removed during migration', () {
     final profile = LocalProfile.fromJson(
       const LocalProfile(
         id: 'viewer',
         name: '已有用户',
-        sources: ['yeguo-worker', 'xiaobao'],
+        sources: ['yeguo-worker', 'xiaobao', 'xingya'],
       ).toJson(),
     );
-    expect(profile.sources, ['yeguo-worker', 'xiaobao']);
-    expect(SourceSite.byId('yeguo-worker').onlineSearch, isTrue);
+    expect(profile.sources, ['xingya']);
+    expect(SourceSite.isKnown('yeguo-worker'), isFalse);
   });
 
   test(

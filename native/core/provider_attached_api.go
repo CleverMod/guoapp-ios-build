@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
@@ -105,40 +104,34 @@ func (c *attachedClient) session(ctx context.Context) (string, string, error) {
 	headers := map[string]string{}
 	switch c.p.id {
 	case "xingya", "qixing", "shanhai":
-		payload := map[string]any{"device": c.device, "device_id": c.device, "install_first_open": true, "first_install_time": time.Now().UnixMilli(), "last_update_time": time.Now().UnixMilli(), "report_link_url": "", "authorization": "", "timestamp": time.Now().UnixMilli(), "android_id": c.device[:16]}
+		body = c.access.Settings["loginBody"]
+		if body == "" {
+			return "", "", fmt.Errorf("%s内置登录参数缺失，需要更新安装包", c.p.name)
+		}
 		if c.p.id == "xingya" {
 			target = "https://u.shytkjgs.com/user/v1/account/login"
-			v := url.Values{}
-			for k, value := range payload {
-				v.Set(k, nativeText(value))
-			}
-			body = v.Encode()
 			content = "application/x-www-form-urlencoded"
-			headers = map[string]string{"x-app-id": "7", "platform": "1", "version_name": "3.3.1", "app_version": "3.3.1", "device_platform": "android", "device_id": c.device, "device_type": "Pixel 7", "uuid": c.device}
 		} else {
 			target = "https://u.shytkjgs.com/user/v3/account/login"
-			payload["package_name"] = "com.jz.xydj"
-			version := "3.8.3.1"
 			if c.p.id == "shanhai" {
 				target = "https://u.app.gxshxy.com/user/v3/account/login"
-				payload["package_name"] = "com.shanhai.duanju"
-				version = "2.2.0"
 			}
-			encrypted, err := attachedECB([]byte(attachedJSON(payload)), []byte("B@ecf920Od8A4df7"))
+			var payload map[string]any
+			if json.Unmarshal([]byte(body), &payload) != nil {
+				return "", "", errors.New("内置登录参数格式无效")
+			}
+			payload["timestamp"] = time.Now().UnixMilli()
+			encrypted, err := attachedECB([]byte(attachedJSON(payload)), []byte(c.access.Settings["loginKey"]))
 			if err != nil {
 				return "", "", err
 			}
 			body = base64.StdEncoding.EncodeToString(encrypted)
-			content = "application/json"
-			headers = map[string]string{"platform": "1", "version_name": version, "user_agent": c.agent(), "device_id": c.device}
+			content = "application/json; charset=utf-8"
 		}
 	case "niuniudj":
 		target = "/api/v1/app/user/visitorInfo"
 		headers = map[string]string{"deviceid": c.device, "token": "", "client": "app", "devicetype": "Android"}
-	case "xiangjiao":
-		target = "/api/guest-sessions"
-		content = "application/json"
-		body = attachedJSON(map[string]string{"device_id": c.device})
+
 	default:
 		return "", "", nil
 	}
@@ -160,10 +153,10 @@ func (c *attachedClient) session(ctx context.Context) (string, string, error) {
 	data := attachedObject(attachedData(envelope))
 	token := mapString(data, "token", "access_token")
 	if token == "" {
-		return "", "", fmt.Errorf("%s游客会话不可用，请导入有效接口授权", c.p.name)
+		return "", "", fmt.Errorf("%s游客会话不可用，请刷新或更新安装包内的授权", c.p.name)
 	}
 	c.token = token
-	c.userID = firstNonEmpty(mapString(data, "userId", "user_id", "id"), c.access.Query["userId"])
+	c.userID = firstNonEmpty(c.access.Query["userId"], mapString(data, "userId", "user_id", "id"))
 	c.expiry = time.Now().Add(30 * time.Minute)
 	return c.token, c.userID, nil
 }
@@ -171,6 +164,9 @@ func (c *attachedClient) session(ctx context.Context) (string, string, error) {
 func (c *attachedClient) call(ctx context.Context, method, target string, payload any) (any, error) {
 	if c.p.id == "honeypeach" {
 		return c.peachCall(ctx, method, target, payload)
+	}
+	if c.p.id == "niuniudj" {
+		return c.niuniuCall(ctx, method, target, payload)
 	}
 	headers := map[string]string{}
 	for key, value := range c.access.Headers {
@@ -188,16 +184,7 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 	switch c.p.id {
 	case "xingya", "qixing", "shanhai":
 		headers["authorization"] = firstNonEmpty(token, headers["authorization"])
-		headers["support_h265"] = "1"
-		headers["User-Agent"] = "okhttp/4.10.0"
-		if c.p.id == "xingya" {
-			defaults := map[string]string{"x-app-id": "7", "platform": "1", "version_name": "3.3.1", "app_version": "3.3.1", "device_platform": "android", "device_id": c.device, "uuid": c.device, "device_type": "Pixel 7", "device_brand": "Google", "os_version": "13", "channel": "default"}
-			for key, value := range defaults {
-				if headers[key] == "" {
-					headers[key] = value
-				}
-			}
-		}
+		headers["User-Agent"] = c.agent()
 	case "niuniudj":
 		headers["token"] = token
 		headers["deviceid"] = c.device
@@ -205,7 +192,7 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 		headers["devicetype"] = "Android"
 	case "hema":
 		if headers["datas"] == "" && headers["DATAS"] == "" {
-			return nil, errors.New("河马需要先导入本机接口授权（datas 请求头）")
+			return nil, errors.New("河马内置授权请求头缺失，需要更新安装包")
 		}
 		key, _ := hex.DecodeString("647a6b6a67667978677368796c677a6d")
 		iv, _ := hex.DecodeString("6170697570646f776e65646372797074")
@@ -215,24 +202,7 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 		}
 		body = strings.ToUpper(hex.EncodeToString(enc))
 		content = "text/plain"
-	case "xingxing", "wusheng":
-		parsed, _ := url.Parse(target)
-		v := parsed.Query()
-		for key, value := range c.access.Query {
-			if v.Get(key) == "" {
-				v.Set(key, value)
-			}
-		}
-		if v.Get("token") == "" {
-			return nil, fmt.Errorf("%s需要先导入有效 Token", c.p.name)
-		}
-		v.Set("productId", "2a8c14d1-72e7-498b-af23-381028eb47c0")
-		v.Set("vestId", "2be070e0-c824-4d0e-a67a-8f688890cadb")
-		v.Set("channel", "oppo19")
-		v.Set("osType", "android")
-		v.Set("version", "20")
-		parsed.RawQuery = v.Encode()
-		target = parsed.String()
+
 	case "qimao":
 		parsed, _ := url.Parse(target)
 		v := parsed.Query()
@@ -264,32 +234,21 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 		headers["app-version"] = "10001"
 		headers["User-Agent"] = "webviewversion/0"
 		headers["sign"] = attachedMD5("AUTHORIZATION=app-version=10001application-id=com.duoduo.readchannel=unknownis-white=net-env=5platform=androidqm-params=" + qm + "reg=d3dGiJc651gSQ8w1")
-	case "souju":
-		if c.access.SignKey == "" {
-			return nil, errors.New("搜剧AI需要先导入接口签名授权")
-		}
-		ts, nonce := strconv.FormatInt(time.Now().UnixMilli(), 10), attachedNonce()
-		mac := hmac.New(sha256.New, []byte(c.access.SignKey))
-		mac.Write([]byte(method + "\n" + target + "\n" + ts + "\n" + nonce))
-		headers["x-ai-movie-client-name"] = "movie-search-frontend"
-		headers["x-ai-movie-client-version"] = "1.0.0"
-		headers["x-ai-movie-build-version"] = "aimovie-v2026.09.28.4-f41bc3c82d76-web"
-		headers["x-ai-movie-protocol-version"] = "2026-07-05.library-v2.playback-v1"
-		headers["x-ai-movie-timestamp"] = ts
-		headers["x-ai-movie-nonce"] = nonce
-		headers["x-ai-movie-signature"] = hex.EncodeToString(mac.Sum(nil))
+
 	case "yimi":
-		if c.access.PrivateKey == "" || len(c.access.Query) == 0 {
-			return nil, errors.New("薏米需要先导入本机签名私钥及接口参数")
+		if c.access.PrivateKey == "" || c.access.Settings["commonQuery"] == "" || c.access.Settings["userQuery"] == "" {
+			return nil, errors.New("薏米内置签名私钥或接口参数缺失，需要更新安装包")
 		}
 		parsed, _ := url.Parse(target)
 		v := parsed.Query()
-		for key, value := range c.access.Query {
-			if v.Get(key) == "" {
-				v.Set(key, value)
-			}
+		common, user := c.access.Settings["commonQuery"], c.access.Settings["userQuery"]
+		sec := c.access.Settings["listSec"]
+		if strings.Contains(parsed.Path, "episode_list") {
+			sec = c.access.Settings["detailSec"]
+			parsed.RawQuery = "end_id=" + v.Get("end_id") + "&" + common + "&pc=10&play_id=" + url.QueryEscape(v.Get("play_id")) + "&start_id=" + v.Get("start_id") + "&" + user
+		} else {
+			parsed.RawQuery = "key=" + url.QueryEscape(v.Get("key")) + "&" + common + "&page=" + v.Get("page") + "&pc=10&" + user
 		}
-		parsed.RawQuery = v.Encode()
 		target = parsed.String()
 		block, _ := pem.Decode([]byte(c.access.PrivateKey))
 		if block == nil {
@@ -303,10 +262,6 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 		}
 		if private == nil {
 			return nil, errors.New("薏米签名私钥格式无效")
-		}
-		sec := "AAF4IWZnITkqeX4hJCB5eio4IWc4IH4="
-		if strings.Contains(parsed.Path, "episode_list") {
-			sec = "AAFzKmZkKjIqenUqJCNycSo7Kmw4I3U="
 		}
 		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
 		sum := sha256.Sum256([]byte("&" + parsed.RawQuery + "&" + parsed.Path + "&" + ts + "&" + sec))
@@ -357,8 +312,14 @@ func (c *attachedClient) call(ctx context.Context, method, target string, payloa
 			if err != nil {
 				return nil, errors.New("山海响应随机数无效")
 			}
-			block, _ := aes.NewCipher([]byte("xxxxxxwhwqedqder"))
-			gcm, _ := cipher.NewGCM(block)
+			block, err := aes.NewCipher([]byte(c.access.Settings["gcmKey"]))
+			if err != nil {
+				return nil, errors.New("山海内置解密密钥无效")
+			}
+			gcm, err := cipher.NewGCM(block)
+			if err != nil {
+				return nil, errors.New("山海解密协议不可用")
+			}
 			if len(nonce) != gcm.NonceSize() {
 				return nil, errors.New("山海响应随机数长度无效")
 			}
@@ -440,17 +401,13 @@ func (c *attachedClient) apiCatalog(ctx context.Context, page int, cat attachedC
 				path = "/v1/theater/home_page"
 			}
 			data, err = c.call(ctx, http.MethodGet, attachedPath(path, values), nil)
-			rows = attachedRows(firstPresent(attachedObject(data), "list", "items"))
+			rows = attachedRows(attachedFirst(attachedObject(data), "list", "items"))
 		}
 	case "haokan":
 		limit = 12
 		data, err = c.form(ctx, "/haokan/ui-feed/playletTagsFeed?log=vhk&tn=1020970b&ctn=1008350n&blur=1", attachedParams("tag_id", cat.value, "pn", pg, "rn", "12"))
 		rows = attachedRows(attachedAt(data, "list"))
-	case "baidu":
-		ts := strconv.FormatInt(time.Now().Unix(), 10)
-		payload := map[string]any{"data": map[string]any{"refreshIndex": page, "timestamp": time.Now().Unix(), "version": attachedMD5(ts + "v2"), "themes": []any{map[string]string{"kind": "综合", "names": "新剧"}, map[string]string{"kind": "题材", "names": cat.name}}, "extRequest": map[string]string{"flow_tabid": "13"}, "from": "feed", "page": "channel_video_landing", "pd": "feed", "theme": ""}}
-		data, err = c.form(ctx, "/feedapi/v1/videoserver/playlets/list?service=bdbox", attachedParams("data", attachedJSON(payload)))
-		rows = attachedRows(attachedAt(data, "items"))
+
 	case "xifan":
 		limit = 30
 		parts := strings.SplitN(cat.value, "@", 2)
@@ -486,19 +443,7 @@ func (c *attachedClient) apiCatalog(ctx context.Context, page int, cat attachedC
 			data, err = c.call(ctx, http.MethodGet, attachedPath("/api/v1/playlet/index", v), nil)
 		}
 		rows = attachedRows(attachedAt(data, "list"))
-	case "damang":
-		limit = 12
-		if query != "" {
-			data, err = c.get(ctx, "/newbee/search/key/words", "keyWords", query, "screenType", "1", "pageNum", pg, "pageSize", "12")
-			rows = attachedRows(attachedAt(data, "videos"))
-		} else {
-			data, err = c.get(ctx, "/newbee/manage/page/film/library/v3", "did", c.device, "pageSize", "12", "pageNum", pg, "tagName", cat.name, "tagId", cat.value)
-			rows = attachedRows(attachedAt(data, "list"))
-		}
-	case "xingxing", "wusheng":
-		limit = 20
-		data, err = c.get(ctx, "/novel-api/app/pageModel/getResourceById", "resourceId", cat.value, "pageNum", pg, "pageSize", "20")
-		rows = attachedRows(attachedAt(data, "datalist"))
+
 	case "yimi":
 		limit = 10
 		data, err = c.get(ctx, "/bookstore/local/visual/channel/list", "key", cat.value, "page", pg, "pc", "10")
@@ -506,10 +451,7 @@ func (c *attachedClient) apiCatalog(ctx context.Context, page int, cat attachedC
 		if len(list) > 0 {
 			rows = attachedRows(list[0]["short_plays"])
 		}
-	case "kuwo":
-		limit = 12
-		data, err = c.get(ctx, "/moduleMore", "currentPage", pg, "moduleId", cat.value, "rn", "12")
-		rows = attachedRows(attachedAt(data, "list"))
+
 	case "niuniudj":
 		limit = 24
 		path := "/api/v1/app/screen/screenMovie"
@@ -520,60 +462,7 @@ func (c *attachedClient) apiCatalog(ctx context.Context, page int, cat attachedC
 		}
 		data, err = c.post(ctx, path, map[string]any{"condition": condition, "pageNum": page, "pageSize": limit})
 		rows = attachedRows(attachedAt(data, "records"))
-	case "souju":
-		v := attachedParams("kind", "short_drama", "intent", "latest_catalog", "page", pg, "limit", "24")
-		if cat.value != "all" && cat.value != "recommend" {
-			v.Set("genre", cat.value)
-		}
-		if query != "" {
-			v.Set("intent", "catalog_search")
-			v.Set("query", query)
-		}
-		data, err = c.call(ctx, http.MethodGet, attachedPath("/v1/browse/catalog", v), nil)
-		rows = attachedRows(firstPresent(attachedObject(data), "cards", "items"))
-	case "md2048":
-		v := attachedParams("page", pg, "size", "24")
-		if strings.HasPrefix(cat.value, "cat-") {
-			v.Set("categoryId", strings.TrimPrefix(cat.value, "cat-"))
-		}
-		data, err = c.call(ctx, http.MethodGet, attachedPath("/api/v1/videos", v), nil)
-		rows = attachedRows(attachedAt(data, "items"))
-	case "xiangjiao":
-		if query != "" {
-			data, err = c.get(ctx, "/api/search", "q", query, "page", pg)
-		} else if cat.value == "hot" {
-			if page > 1 {
-				return nil, false, nil
-			}
-			data, err = c.get(ctx, "/api/home/hot")
-			more = false
-		} else {
-			v := attachedParams("limit", strconv.Itoa(min(page*24, 500)))
-			if strings.HasPrefix(cat.value, "cat:") {
-				cats, e := c.get(ctx, "/api/categories")
-				if e != nil {
-					return nil, false, e
-				}
-				for _, row := range attachedRows(cats) {
-					if mapString(row, "name") == strings.TrimPrefix(cat.value, "cat:") {
-						v.Set("category_id", mapString(row, "id"))
-					}
-				}
-				if v.Get("category_id") == "" {
-					return nil, false, errors.New("香蕉分类已调整，请刷新分类")
-				}
-			}
-			data, err = c.call(ctx, http.MethodGet, attachedPath("/api/theater", v), nil)
-		}
-		rows = attachedRows(attachedAt(data, "items"))
-		if query == "" && cat.value != "hot" {
-			start := (page - 1) * 24
-			if start >= len(rows) {
-				rows = nil
-			} else {
-				rows = rows[start:min(start+24, len(rows))]
-			}
-		}
+
 	case "kuangbiao":
 		return c.rushCatalog(ctx, page, cat)
 	case "yizk":
@@ -682,7 +571,7 @@ func (c *attachedClient) apiDetail(ctx context.Context, id string) (Drama, []Cha
 		}
 		data, err = c.get(ctx, path, "theater_parent_id", id)
 		episodes = attachedAt(data, "theaters")
-	case "haokan", "baidu":
+	case "haokan":
 		data, err = c.form(ctx, "https://sv.baidu.com/haokan/ui-video/playlet/rec/detail?log=vhk&tn=1020970b&ctn=1008350n&blur=1", attachedParams("playlet_id", id, "vid", "undefined"))
 		values := attachedAt(data, "vid_list")
 		if text, ok := values.(string); ok {
@@ -720,13 +609,7 @@ func (c *attachedClient) apiDetail(ctx context.Context, id string) (Drama, []Cha
 	case "qimao":
 		data, err = c.get(ctx, "https://api-read.qmplaylet.com/player/api/v1/playlet/info", "playlet_id", id)
 		episodes = attachedAt(data, "play_list")
-	case "damang":
-		data, err = c.get(ctx, "/newbee/play/page/detail", "did", c.device, "albumId", id, "vid", "")
-		data = attachedAt(data, "album")
-		episodes = attachedAt(data, "anthologies")
-	case "xingxing", "wusheng":
-		data, err = c.get(ctx, "/novel-api/basedata/book/getChapterList", "bookId", id)
-		episodes = data
+
 	case "yimi":
 		all := []any{}
 		for start := 1; start <= 2000; start += 30 {
@@ -745,56 +628,32 @@ func (c *attachedClient) apiDetail(ctx context.Context, id string) (Drama, []Cha
 			}
 		}
 		episodes = all
-	case "kuwo":
-		data, err = c.get(ctx, "/videoList", "albumId", id)
-		episodes = attachedAt(data, "list")
-		data = attachedAt(data, "shortinfo")
+
 	case "niuniudj":
 		_, user, e := c.session(ctx)
 		if e != nil {
 			err = e
 			break
 		}
-		data, err = c.post(ctx, "/api/v1/app/play/movieDesc", map[string]string{"id": id, "typeId": "S1"})
+		data, err = c.post(ctx, "/api/v1/app/play/movieDesc", map[string]any{"id": niuniuID(id), "typeId": "S1"})
 		if err != nil {
 			break
 		}
 		var detail any
-		detail, err = c.post(ctx, "/api/v1/app/play/movieDetails", map[string]any{"id": id, "source": 0, "typeId": "S1", "userId": user})
+		detail, err = c.post(ctx, "/api/v1/app/play/movieDetails", map[string]any{"id": niuniuID(id), "source": 0, "typeId": "S1", "userId": user})
 		episodes = attachedAt(detail, "episodeList")
-		if len(attachedRows(episodes)) == 0 && mapString(attachedObject(detail), "thirdPlayId") != "" {
-			err = errors.New("此剧使用第三方授权线路，当前游客会话未返回可播放章节")
-		}
-	case "souju":
-		data, err = c.get(ctx, "/v1/catalog/"+escaped, "episodes", "window", "episode_limit", "1")
-		if err != nil {
-			break
-		}
-		all := []any{}
-		for offset := 0; offset < 2000; offset += 100 {
-			var page any
-			page, err = c.get(ctx, "/v1/catalog/"+escaped+"/episodes", "limit", "100", "offset", strconv.Itoa(offset), "order", "asc")
-			if err != nil {
-				break
+		if third := mapString(attachedObject(detail), "thirdPlayId"); len(attachedRows(episodes)) == 0 && third != "" && third != "0" && err == nil {
+			var csj any
+			csj, err = c.niuniuCSJDetail(ctx, third, 1)
+			list := []any{}
+			for _, row := range attachedRows(attachedAt(csj, "episode_right_list")) {
+				if number := attachedInt(row, "index"); number > 0 && number <= 2000 {
+					list = append(list, map[string]any{"id": "t:" + third + ":" + strconv.Itoa(number), "number": number})
+				}
 			}
-			list, _ := attachedAt(page, "episodes").([]any)
-			all = append(all, list...)
-			if more, ok := attachedAt(page, "pagination", "has_more").(bool); ok && !more {
-				break
-			}
-			if len(list) < 100 {
-				break
-			}
+			episodes = list
 		}
-		episodes = all
-	case "md2048":
-		data, err = c.get(ctx, "/api/v1/videos/"+escaped)
-		episodes = []any{data}
-	case "xiangjiao":
-		data, err = c.get(ctx, "/api/dramas/"+escaped)
-		if err == nil {
-			episodes, err = c.get(ctx, "/api/dramas/"+escaped+"/episodes")
-		}
+
 	case "kuangbiao":
 		data, err = c.rushCall(ctx, "episode.watch", map[string]any{"dramaId": id, "episodeNumber": 1})
 		episodes = attachedAt(data, "episodes")
@@ -818,9 +677,7 @@ func (c *attachedClient) apiDetail(ctx context.Context, id string) (Drama, []Cha
 		return Drama{}, nil, err
 	}
 	info := attachedObject(data)
-	if c.p.id == "md2048" && attachedBlockedTitle.MatchString(mapString(info, "title")) {
-		return Drama{}, nil, errors.New("此内容不支持接入")
-	}
+
 	if info == nil && len(attachedRows(data)) > 0 {
 		info = attachedRows(data)[0]
 	}
@@ -846,25 +703,12 @@ func (c *attachedClient) apiDetail(ctx context.Context, id string) (Drama, []Cha
 		title := mapString(row, "son_title", "chapterName", "name", "title")
 		switch c.p.id {
 		case "weiguan":
-			address = attachedBestURL(firstPresent(row, "playSetting", "videoClarityList", "playUrl"))
-		case "xingxing", "wusheng":
-			play := attachedRows(row["shortPlayList"])
-			if len(play) > 0 {
-				nested := attachedRows(play[0]["chapterShortPlayVoList"])
-				if len(nested) > 0 {
-					address = mapString(nested[0], "shortPlayUrl")
-				}
-			}
-			if address == "" {
-				continue
-			}
-		case "kuwo":
-			key = mapString(attachedObject(row["mvpayinfo"]), "vid")
-			if key == "" {
-				continue
-			}
+			address = attachedBestURL(attachedFirst(row, "playSetting", "videoClarityList", "playUrl"))
+
 		case "niuniudj":
-			key = "f" + key
+			if !strings.HasPrefix(key, "t:") {
+				key = "f" + key
+			}
 		case "yimi":
 			if parsed, e := url.Parse(address); e == nil && strings.Contains(parsed.Hostname(), "zhangyuecdn") {
 				parsed.Scheme = "https"
@@ -896,15 +740,14 @@ func (c *attachedClient) detailIdentity(row map[string]any, id string) bool {
 	switch c.p.id {
 	case "hema":
 		returned = mapString(row, "bookId")
-	case "xingya", "qixing", "shanhai", "niuniudj", "md2048", "xiangjiao", "kuangbiao":
+	case "xingya", "qixing", "shanhai", "niuniudj", "kuangbiao":
 		returned = mapString(row, "id")
 	case "xifan":
 		returned = mapString(row, "duanjuId", "duanjuID")
 		id, _, _ = strings.Cut(id, "@")
-	case "qimao", "haokan", "baidu":
+	case "qimao", "haokan":
 		returned = mapString(row, "playlet_id")
-	case "damang":
-		returned = mapString(row, "albumId")
+
 	case "yizk":
 		returned = mapString(row, "token")
 	}
@@ -935,84 +778,35 @@ func (c *attachedClient) play(ctx context.Context, id, key string, chapter Chapt
 				address = attachedBestURL(rows[0]["content"])
 			}
 		}
-	case "haokan", "baidu":
+	case "haokan":
 		data, err = c.form(ctx, "https://sv.baidu.com/appui/api?cmd=video/relate&log=vhk&tn=1020970b&ctn=1008350n&blur=1", attachedParams("method", "post", "vid", key))
 		address = attachedBestURL(attachedAt(data, "video/relate", "data", "cur_video", "clarityUrl"))
-	case "damang":
-		for attempt := 0; attempt < 5; attempt++ {
-			data, err = c.get(ctx, "http://mobile.api.mgtv.com/v8/video/getSource", "playType", "28", "fileSourceType", "2", "seekSourceType", "2", "definition", "3", "_support", "10100001", "osVersion", "10", "videoId", key)
-			if err == nil {
-				for _, row := range attachedRows(attachedAt(data, "videoSources")) {
-					address = mapString(attachedObject(row["disp"]), "info")
-					if isProviderHTTPMediaURL(address) {
-						break
-					}
-				}
-			}
-			if isProviderHTTPMediaURL(address) {
-				break
-			}
-			if attempt < 4 {
-				timer := time.NewTimer(1200 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return providerMedia{}, ctx.Err()
-				case <-timer.C:
-				}
-			}
-		}
-	case "kuwo":
-		raw, _, e := c.raw(ctx, http.MethodGet, "http://nmobi.kuwo.cn/mobi.s?"+attachedParams("f", "web", "type", "get_url_by_vid", "vid", key).Encode(), "", "", nil)
-		err = e
-		for _, line := range strings.Split(raw, "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "url=") {
-				address = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "url="))
-				break
-			}
-		}
+
 	case "niuniudj":
+		if strings.HasPrefix(key, "t:") {
+			parts := strings.SplitN(strings.TrimPrefix(key, "t:"), ":", 2)
+			if len(parts) != 2 {
+				return providerMedia{}, errors.New("牛牛第三方章节参数无效")
+			}
+			number, e := strconv.Atoi(parts[1])
+			if e != nil || number < 1 {
+				return providerMedia{}, errors.New("牛牛第三方集数无效")
+			}
+			address, err = c.niuniuCSJMedia(ctx, parts[0], number)
+			break
+		}
 		_, user, e := c.session(ctx)
 		if e != nil {
 			return providerMedia{}, e
 		}
-		data, err = c.post(ctx, "/api/v1/app/play/movieDetails", map[string]any{"id": strings.TrimPrefix(key, "f"), "episodeId": id, "source": 0, "typeId": "S1", "userId": user})
+		data, err = c.post(ctx, "/api/v1/app/play/movieDetails", map[string]any{"id": niuniuID(strings.TrimPrefix(key, "f")), "episodeId": niuniuID(id), "source": 0, "typeId": "S1", "userId": user})
 		address = attachedBestURL(data)
-	case "xiangjiao":
-		token, _, e := c.session(ctx)
-		if e != nil {
-			return providerMedia{}, e
-		}
-		raw, _, e := c.raw(ctx, http.MethodPost, "/api/playback/sessions", "application/json", attachedJSON(map[string]string{"episode_id": key}), map[string]string{"Authorization": "Bearer " + token})
-		err = e
-		if err == nil {
-			v, e := attachedDecode(raw)
-			err = e
-			address = attachedBestURL(attachedAt(attachedData(v), "media"))
-		}
+
 	case "yizk":
 		sequence, _ := strconv.Atoi(chapter.EpisodeString(0))
 		data, err = c.post(ctx, "/api/v1/films/"+url.PathEscape(id)+"/play", map[string]any{"episode": sequence, "source": "direct"})
 		address = attachedBestURL(data)
-	case "souju":
-		data, err = c.get(ctx, "/v1/playback/resolve/"+url.PathEscape(key))
-		if err == nil {
-			lines := attachedRows(attachedAt(data, "line_options"))
-			for _, line := range lines {
-				candidate := mapString(line, "url")
-				if strings.HasPrefix(candidate, "resolve://") {
-					var resolved any
-					resolved, err = c.post(ctx, "/v1/playback/resolve-line?view=compact", map[string]any{"ticket": strings.TrimPrefix(candidate, "resolve://"), "selection": map[string]any{"playback_source_id": line["playback_source_id"], "provider_id": line["provider_id"]}})
-					if err == nil {
-						candidate = attachedBestURL(attachedAt(resolved, "line"))
-					}
-				}
-				if isProviderHTTPMediaURL(candidate) {
-					address = candidate
-					break
-				}
-			}
-		}
+
 	case "kuangbiao":
 		data, err = c.rushCall(ctx, "episode.watch", map[string]any{"dramaId": id, "episodeNumber": attachedEpisodeNumber(chapter)})
 		episode := attachedObject(attachedAt(data, "episode"))
@@ -1023,10 +817,7 @@ func (c *attachedClient) play(ctx context.Context, id, key string, chapter Chapt
 		if address == "" {
 			address = "https://raw.shorttv.online/uploads/direct/" + url.PathEscape(key) + "/video.mp4"
 		}
-	case "md2048":
-		if address != "" {
-			address = c.p.base + "/api/v1/m3u8/proxy?path=" + url.QueryEscape(address)
-		}
+
 	}
 	if err != nil {
 		return providerMedia{}, err
@@ -1035,13 +826,14 @@ func (c *attachedClient) play(ctx context.Context, id, key string, chapter Chapt
 		return providerMedia{}, fmt.Errorf("%s未返回可用播放地址，可能需要站源授权", c.p.name)
 	}
 	media := providerMedia{URL: address}
-	if c.p.id == "damang" {
-		media.credentials = &providerMediaCredentials{userAgent: "libmpv"}
+	if c.p.id == "niuniudj" {
+		agent := c.agent()
+		if strings.HasPrefix(key, "t:") {
+			agent = c.access.Settings["csj_ua"]
+		}
+		media.credentials = &providerMediaCredentials{userAgent: agent}
 	}
-	if c.p.id == "md2048" {
-		media.Referer = c.p.base + "/"
-		return c.opaqueHLS(ctx, media)
-	}
+
 	return media, nil
 }
 
