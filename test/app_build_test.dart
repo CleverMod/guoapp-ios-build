@@ -116,7 +116,18 @@ void main() {
       await store.importBackup(backup);
       expect(store.preferences.getString('source'), 'huangdou');
       expect(store.history, hasLength(allSourcesEnabled ? 2 : 1));
-      expect(store.favorites.map((drama) => drama.id), [other.id]);
+      expect(
+        store.favorites.map((drama) => drama.id),
+        allSourcesEnabled ? [other.id] : isEmpty,
+      );
+      final restoredLibrary =
+          (jsonDecode(await store.exportBackup())['libraries']
+                  as Map)['default']
+              as Map;
+      expect(
+        (restoredLibrary['favorites'] as List).map((row) => (row as Map)['id']),
+        [other.id],
+      );
       store.dispose();
     },
   );
