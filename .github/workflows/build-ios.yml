@@ -94,7 +94,7 @@ jobs:
           PLAYER_FEEDBACK_SCREENSHOTS: dist/diagnostics/player-feedback
           PLAYER_FEEDBACK_FONT: /System/Library/Fonts/STHeiti Medium.ttc
         run: |
-          dart analyze --fatal-infos lib/player_feedback.dart lib/player_interactions.dart lib/player_controls.dart lib/television_controls.dart test/player_feedback_test.dart test/television_player_test.dart
+          dart analyze --fatal-infos lib/player_feedback.dart lib/player_interactions.dart lib/player_controls.dart lib/television_controls.dart lib/remote_widgets.dart test/player_feedback_test.dart test/television_player_test.dart
           flutter test test/player_feedback_test.dart test/television_player_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
       - name: Upload player feedback UI previews
         if: always()
