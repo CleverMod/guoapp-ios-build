@@ -103,6 +103,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - run: python scripts/build_android.py ${{ matrix.arguments }}
+        env:
+          GUOAPP_SOURCE_ACCESS: ${{ secrets.GUOAPP_SOURCE_ACCESS }}
       - name: 校验 APK 签名证书
         if: steps.signing.outputs.release == 'true'
         shell: bash

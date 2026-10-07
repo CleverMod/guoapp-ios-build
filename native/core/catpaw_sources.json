@@ -1,0 +1,266 @@
+[
+  {
+    "id": "catpaw_bajie",
+    "name": "八戒影视",
+    "script": "八戒影视.py",
+    "sha256": "1b84998feea12d8b271658ca48bdff920c4004869acca36691502733a43368cf",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_proxy_drama",
+    "name": "proxy_drama",
+    "script": "proxy_drama.py",
+    "sha256": "2247873fa239ec03f3db0d7e729a85e5393dcdd058b3277099e18c4828329e3e",
+    "helper": true,
+    "existing": false
+  },
+  {
+    "id": "catpaw_xinlang",
+    "name": "新浪资源",
+    "script": "新浪资源.py",
+    "sha256": "d188e1d63cc4f633cc96d14287f22ddf44fd6c1616f851eef66e5da5c0e8ecb7",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_duboku",
+    "name": "独播库",
+    "script": "独播库.py",
+    "sha256": "c76478c300eb3b0d02b4ce7e083c0e3bedbc96e933b2f5e3e8b00e0ed61d55f3",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_yiys",
+    "name": "壹影视",
+    "script": "壹影视.py",
+    "sha256": "a31cdb6ab331fc18c60473204518f78b1b5ab73801ac43f03523ab4bb38de8d3",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "jumi",
+    "name": "剧迷TV",
+    "script": "看客TV.py",
+    "sha256": "e390f6955581520f3caccfc4a92ef6032293ef76fee01c3c3b1b0adc00af75f1",
+    "helper": false,
+    "existing": true
+  },
+  {
+    "id": "catpaw_ciyuancheng",
+    "name": "次元城动漫",
+    "script": "cycapp.py",
+    "sha256": "d6cb6312a74dce881cc18c36c9c4c3c45dd67861fc48f8c4bbb619c127d5d092",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_xifandongman",
+    "name": "稀饭动漫",
+    "script": "cycapp.py",
+    "sha256": "d6cb6312a74dce881cc18c36c9c4c3c45dd67861fc48f8c4bbb619c127d5d092",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_meijuxia",
+    "name": "美剧侠",
+    "script": "美剧侠.py",
+    "sha256": "b0c4d27fa986f862319548282a7d70aab432826a58fcab72f6215a6442e8d51d",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_rebo",
+    "name": "热播影视大全",
+    "script": "RJAPP.py",
+    "sha256": "70a9fe683254b8750b73971ac71e9aedd972a57e5c840ba906c847e09282f9fa",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_xinxin",
+    "name": "欣欣影视",
+    "script": "XinJie.py",
+    "sha256": "88c99b1669e20371cfa80fee498dc0aa16ac3a868a91b89fd98833e575704059",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_gulu",
+    "name": "咕噜映画",
+    "script": "Appfox.py",
+    "sha256": "dffe2a4dd8947eea88b1808d0b4c70af3c66584910bd3242c803d338a0931bb2",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_zhuifan",
+    "name": "追番达人",
+    "script": "Appfox.py",
+    "sha256": "dffe2a4dd8947eea88b1808d0b4c70af3c66584910bd3242c803d338a0931bb2",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_quanyingshi",
+    "name": "全影视PRO",
+    "script": "FeiApp.py",
+    "sha256": "6be1b9c0865f055749dbd23ee55ad779cd251b5d49e236e93cf7523bb6a6ec09",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_fanxi",
+    "name": "番喜",
+    "script": "ApptoV5无加密.py",
+    "sha256": "e89c60ae99da03d999e2e275b55370c959593d8fcc907ec1e488f58cf8909dff",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_bidi",
+    "name": "哔嘀影视",
+    "script": "AppMuou.py",
+    "sha256": "f2e8e68d4c276bb01c36e5a4027fb22ecfec865078f67280ec481806034ab4e5",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_bilfun",
+    "name": "BILFUN影视大全",
+    "script": "AppMuou.py",
+    "sha256": "f2e8e68d4c276bb01c36e5a4027fb22ecfec865078f67280ec481806034ab4e5",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_silisili",
+    "name": "嘶哩嘶哩",
+    "script": "skapp.py",
+    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_jikan",
+    "name": "即看影视",
+    "script": "skapp.py",
+    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_kankelm",
+    "name": "看客联盟",
+    "script": "skapp.py",
+    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_2kdm",
+    "name": "2k动漫",
+    "script": "skapp.py",
+    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_maitian",
+    "name": "麦田影院",
+    "script": "AppV2.py",
+    "sha256": "3318a29e254fa16d95c380f0b4cbfba544e1a0d2867ac54330e4727817c29f25",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_xingma",
+    "name": "星马视",
+    "script": "AppV2.py",
+    "sha256": "3318a29e254fa16d95c380f0b4cbfba544e1a0d2867ac54330e4727817c29f25",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_gotto",
+    "name": "gotto",
+    "script": "AppV2.py",
+    "sha256": "3318a29e254fa16d95c380f0b4cbfba544e1a0d2867ac54330e4727817c29f25",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_gugu",
+    "name": "咕咕动漫",
+    "script": "getapp3.4.6.py",
+    "sha256": "0cdf22f727651940e00bb9a0b3be4290555d74906e596d20f94b0ade689acf43",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_jiuxiao",
+    "name": "九霄视频",
+    "script": "Hmys.py",
+    "sha256": "de6ae54342f92aab865a159f813821994e53f205495c6c6e8ab7a619a9551310",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_yiyi",
+    "name": "YIYI影视",
+    "script": "99APP2.py",
+    "sha256": "ad44feaec09df2b582d47f0887bf9c71c49e3577af6a764d944aecb28eb40ff9",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_luogongge",
+    "name": "落攻阁影视",
+    "script": "99APP2.py",
+    "sha256": "ad44feaec09df2b582d47f0887bf9c71c49e3577af6a764d944aecb28eb40ff9",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_kaiduan",
+    "name": "开端",
+    "script": "开端.py",
+    "sha256": "961357a307d34bd0b3e887bb61b5b89656d5f3307627bcba739ad03c031253cf",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_247",
+    "name": "247看",
+    "script": "247看.py",
+    "sha256": "6034a8c7a0ce33b98e10a21a4162c4fcfddbcef40f4d0592bc0379e1b6c8ea5c",
+    "helper": false,
+    "existing": false
+  },
+  {
+    "id": "catpaw_proxy_artjx",
+    "name": "proxy_artjx",
+    "script": "proxy_artjx.py",
+    "sha256": "f198fafa015c069c33dc96fdbda5536896f2a106b9a28124a0bec80420163113",
+    "helper": true,
+    "existing": false
+  },
+  {
+    "id": "catpaw_proxy_ryjx",
+    "name": "proxy_ryjx",
+    "script": "proxy_ryjx.py",
+    "sha256": "57c730389d142cacf250b6100d07aab9b0d357ba0d2ac7fbee04a7a9afb415aa",
+    "helper": true,
+    "existing": false
+  },
+  {
+    "id": "catpaw_proxy_fyjx",
+    "name": "proxy_fyjx",
+    "script": "proxy_fyjx.py",
+    "sha256": "5338ac4655e5b40451ad8c174a60dc6a14a72b0478f31825cd7e1d4be78978fc",
+    "helper": true,
+    "existing": false
+  }
+]

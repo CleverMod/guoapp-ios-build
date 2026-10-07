@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -95,5 +97,48 @@ def source_access_flags(path=None, required=False):
         for source in (*requirements, 'xiaobao'):
             if not config.get(source, {}).get('headers', {}).get('User-Agent'):
                 raise SystemExit(f'缺少 {source} 的内置请求头，请更新 GUOAPP_SOURCE_ACCESS。')
+        manifest = Path(__file__).resolve().parents[1] / 'native/core/catpaw_sources.json'
+        for entry in json.loads(manifest.read_text(encoding='utf-8')):
+            source = entry['id']
+            settings = config.get(source, {}).get('settings', {})
+            if entry['existing']:
+                continue
+            if settings.get('scriptSHA256') != entry['sha256'] or settings.get('script') != entry['script']:
+                raise SystemExit(f'缺少 {source} 的对应版本内置授权，请更新 GUOAPP_SOURCE_ACCESS。')
+            for key in ('constants', 'defaults'):
+                try:
+                    value = json.loads(settings.get(key, ''))
+                    if not isinstance(value, dict):
+                        raise ValueError()
+                except (ValueError, TypeError):
+                    raise SystemExit(f'{source} 的内置协议参数无效；实际内容已隐藏。') from None
+        try:
+            parses = json.loads(config.get('catpaw_playback', {}).get('settings', {}).get('parses', ''))
+            if not isinstance(parses, list) or not parses:
+                raise ValueError()
+        except (ValueError, TypeError):
+            raise SystemExit('缺少 CatPaw 内置解析线路，请更新 GUOAPP_SOURCE_ACCESS。') from None
     encoded = base64.b64encode(json.dumps(config, ensure_ascii=False, separators=(',', ':')).encode('utf-8')).decode('ascii')
     return ' -X duanjuapp/native/core.bundledAttachedAccessBase64=' + encoded
+
+
+@contextmanager
+def source_access_arguments(path=None, required=False):
+    flags = source_access_flags(path, required)
+    if not flags:
+        yield []
+        return
+    encoded = flags.partition('bundledAttachedAccessBase64=')[2]
+    original = Path(__file__).resolve().parents[1] / 'native/core/provider_attached.go'
+    body = original.read_text(encoding='utf-8')
+    marker = 'var bundledAttachedAccessBase64 string'
+    if body.count(marker) != 1:
+        raise SystemExit('站源授权编译输入位置不符，未修改源码。')
+    with tempfile.TemporaryDirectory(prefix='guoapp-source-access-') as temporary:
+        directory = Path(temporary)
+        replacement = directory / 'provider_attached.go'
+        replacement.write_text(body.replace(marker, 'var bundledAttachedAccessBase64 = ' + json.dumps(encoded)),
+                               encoding='utf-8')
+        overlay = directory / 'overlay.json'
+        overlay.write_text(json.dumps({'Replace': {str(original): str(replacement)}}), encoding='utf-8')
+        yield ['-overlay=' + str(overlay)]

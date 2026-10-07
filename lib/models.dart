@@ -16,6 +16,7 @@ class SourceSite {
       id == 'guipian' ||
       id == 'hanxiaoquan' ||
       collectorValues.any((site) => site.id == id) ||
+      catpawValues.any((site) => site.id == id) ||
       const {
         "batvideo",
         "honeypeach",
@@ -114,6 +115,37 @@ class SourceSite {
     SourceSite("yizk", "一直看", "分类视频 · 在线搜索"),
   ];
 
+  static const catpawValues = [
+    SourceSite('catpaw_bajie', '八戒影视', '电影 · 剧集 · 多线路'),
+    SourceSite('catpaw_xinlang', '新浪资源', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_duboku', '独播库', '电影 · 剧集 · 动漫 · 综艺'),
+    SourceSite('catpaw_yiys', '壹影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_ciyuancheng', '次元城动漫', '动漫 · 分类 · 在线搜索'),
+    SourceSite('catpaw_xifandongman', '稀饭动漫', '动漫 · 分类 · 在线搜索'),
+    SourceSite('catpaw_meijuxia', '美剧侠', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_rebo', '热播影视大全', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_xinxin', '欣欣影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_gulu', '咕噜映画', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_zhuifan', '追番达人', '动漫 · 分类 · 在线搜索'),
+    SourceSite('catpaw_quanyingshi', '全影视PRO', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_fanxi', '番喜', '动漫 · 影视 · 在线搜索'),
+    SourceSite('catpaw_bidi', '哔嘀影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_bilfun', 'BILFUN影视大全', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_silisili', '嘶哩嘶哩', '动漫 · 影视 · 在线搜索'),
+    SourceSite('catpaw_jikan', '即看影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_kankelm', '看客联盟', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_2kdm', '2k动漫', '动漫 · 分类 · 在线搜索'),
+    SourceSite('catpaw_maitian', '麦田影院', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_xingma', '星马视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_gotto', 'gotto', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_gugu', '咕咕动漫', '动漫 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_jiuxiao', '九霄视频', '影视 · 分类 · 在线搜索'),
+    SourceSite('catpaw_yiyi', 'YIYI影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_luogongge', '落攻阁影视', '影视 · 多线路 · 在线搜索'),
+    SourceSite('catpaw_kaiduan', '开端', '电影 · 剧集 · 动漫 · 短剧'),
+    SourceSite('catpaw_247', '247看', '电影 · 剧集 · 动漫 · 短剧'),
+  ];
+
   static const allValues = [
     hongguo,
     hanxiaoquan,
@@ -129,6 +161,7 @@ class SourceSite {
     ...collectorValues,
     SourceSite('xifu', '喜福', '分类短剧'),
     ...attachedValues,
+    ...catpawValues,
   ];
   static const values = allSourcesEnabled ? allValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);

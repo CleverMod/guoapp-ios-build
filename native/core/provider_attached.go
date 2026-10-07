@@ -48,6 +48,7 @@ type attachedClient struct {
 	csjExpiry time.Time
 	transport http.RoundTripper
 	imported  importedSourceState
+	catpaw    *catpawState
 }
 
 func attachedProviderByID(id string) (attachedProvider, bool) {
@@ -98,8 +99,11 @@ func (p attachedProvider) category(id string) (attachedCategory, bool) {
 			return cat, true
 		}
 	}
-	if p.kind == "imported" && id != "" && len(id) <= 128 && !strings.ContainsAny(id, "|/\\\x00\r\n") {
+	if (p.kind == "imported" || p.kind == "catpaw") && id != "" && len(id) <= 128 && !strings.ContainsAny(id, "|/\\\x00\r\n") {
 		return attachedCategory{id: id, value: id}, true
+	}
+	if p.kind == "catpaw" && id == "" {
+		return attachedCategory{}, true
 	}
 	return attachedCategory{}, false
 }
@@ -316,6 +320,13 @@ func (d *Downloader) fetchAttachedCategories(ctx context.Context, source string)
 	if !ok {
 		return nil, errors.New("请选择有效站源")
 	}
+	if p.kind == "catpaw" {
+		c, err := d.attachedClient(source)
+		if err != nil {
+			return nil, err
+		}
+		return c.catpawCategories(ctx)
+	}
 	if p.kind == "imported" {
 		c, err := d.attachedClient(source)
 		if err != nil {
@@ -342,6 +353,9 @@ func (d *Downloader) fetchAttachedCatalogPage(ctx context.Context, source string
 	if query != "" && !c.p.search {
 		return nil, false, errors.New("此站源仅支持已加载目录内搜索")
 	}
+	if c.p.kind == "catpaw" {
+		return c.catpawCatalog(ctx, page, cat.value, query)
+	}
 	if c.p.kind == "imported" {
 		return c.importedCatalog(ctx, page, cat, query)
 	}
@@ -358,6 +372,9 @@ func (d *Downloader) fetchAttachedDetail(ctx context.Context, source, id string)
 	}
 	if id == "" || len(id) > 512 || strings.ContainsAny(id, "\x00\r\n") {
 		return Drama{}, nil, errors.New("站源剧集标识无效")
+	}
+	if c.p.kind == "catpaw" {
+		return c.catpawDetail(ctx, id)
 	}
 	if c.p.kind == "imported" {
 		return c.importedDetail(ctx, id)
@@ -390,7 +407,7 @@ func (d *Downloader) resolveAttachedMedia(ctx context.Context, task Task) (provi
 		if err != nil {
 			return providerMedia{}, err
 		}
-		if media.Referer == "" && source != "niuniudj" && source != "qixing" && c.p.kind != "imported" {
+		if media.Referer == "" && source != "niuniudj" && source != "qixing" && c.p.kind != "imported" && c.p.kind != "catpaw" {
 			media.Referer = c.p.base + "/"
 		}
 		if media.credentials == nil {

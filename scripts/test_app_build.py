@@ -38,6 +38,14 @@ class AppBuildTests(unittest.TestCase):
         for source, fields in requirements.items():
             config[source] = {'headers': {'User-Agent': 'fixture'}, 'settings': {name: 'fixture' for name in fields}}
         config['xiaobao'] = {'headers': {'User-Agent': 'fixture'}}
+        manifest = Path(__file__).resolve().parents[1] / 'native/core/catpaw_sources.json'
+        for entry in json.loads(manifest.read_text(encoding='utf-8')):
+            if not entry['existing']:
+                config[entry['id']] = {'settings': {
+                    'script': entry['script'], 'scriptSHA256': entry['sha256'],
+                    'extend': '', 'constants': '{}', 'defaults': '{}',
+                }}
+        config['catpaw_playback'] = {'settings': {'parses': '[{"url":"https://parser.test/?url="}]'}}
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'source_access.json'
             path.write_text(json.dumps(config), encoding='utf-8')
