@@ -75,6 +75,20 @@ jobs:
         run: |
           flutter test test/app_build_test.dart test/source_visibility_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
           flutter test test/app_build_test.dart test/source_visibility_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Verify episode line selection and playback
+        env:
+          EPISODE_LINE_SCREENSHOT: dist/diagnostics/episode-lines.png
+        run: |
+          flutter test test/episode_lines_test.dart test/follow_state_test.dart test/playback_loader_test.dart test/player_screen_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
+          flutter test test/episode_lines_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Upload episode line UI preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: episode-lines-ui-preview
+          path: dist/diagnostics/episode-lines.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload dependency lockfile
         if: inputs.refresh_lockfile
         uses: actions/upload-artifact@v4

@@ -19,7 +19,7 @@ class BatchDownloadItem {
   final _submitted = <int>{};
 
   List<Episode> episodes(bool includeVip) => {
-    for (final episode in detail?.episodes ?? <Episode>[])
+    for (final episode in detail?.defaultEpisodes ?? <Episode>[])
       if (includeVip || !episode.vip) episode.number: episode,
   }.values.toList()..sort((a, b) => a.number.compareTo(b.number));
 

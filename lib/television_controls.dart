@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'models.dart';
+import 'episode_browser.dart';
 import 'playback_preferences.dart';
 import 'video_enhancement.dart';
 import 'video_enhancement_preferences.dart';
@@ -236,7 +237,14 @@ class _TelevisionControlsState extends State<TelevisionControls> {
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
-    for (final node in [_surface, _play, _episodes, _diary, _settings, _progress]) {
+    for (final node in [
+      _surface,
+      _play,
+      _episodes,
+      _diary,
+      _settings,
+      _progress,
+    ]) {
       node.dispose();
     }
     super.dispose();
@@ -489,29 +497,40 @@ class TelevisionEpisodeDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text('选集 · 共 ${episodes.length} 集'),
+    title: const Text('选集'),
     content: SizedBox(
       width: 700,
       height: MediaQuery.sizeOf(context).height * .55,
-      child: LayoutBuilder(
-        builder: (context, constraints) => RemoteGrid(
-          itemKeys: episodes.map((episode) => '${episode.number}').toList(),
-          columns: ((constraints.maxWidth - 12) / 96).floor().clamp(1, 8),
-          itemExtent: 64,
-          initialIndex: currentIndex,
-          autofocus: true,
-          padding: const EdgeInsets.all(6),
-          itemBuilder: (_, index, node, onFocus) => RemoteEpisodeButton(
-            key: ValueKey('tv-select-episode-${episodes[index].number}'),
-            number: episodes[index].number,
-            vip: episodes[index].vip,
-            current: index == currentIndex,
-            focusNode: node,
-            onFocus: onFocus,
-            onPressed: () => Navigator.pop(context, index),
-          ),
-        ),
-      ),
+      child: EpisodeLine.group(episodes).length > 1
+          ? EpisodeBrowser(
+              episodes: episodes,
+              currentNumber: episodes[currentIndex].number,
+              currentId: episodes[currentIndex].id,
+              keyPrefix: 'tv-select-episode',
+              onSelected: (index) => Navigator.pop(context, index),
+              onLineSelected: (index) => Navigator.pop(context, index),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) => RemoteGrid(
+                itemKeys: episodes
+                    .map((episode) => '${episode.number}')
+                    .toList(),
+                columns: ((constraints.maxWidth - 12) / 96).floor().clamp(1, 8),
+                itemExtent: 64,
+                initialIndex: currentIndex,
+                autofocus: true,
+                padding: const EdgeInsets.all(6),
+                itemBuilder: (_, index, node, onFocus) => RemoteEpisodeButton(
+                  key: ValueKey('tv-select-episode-${episodes[index].number}'),
+                  number: episodes[index].number,
+                  vip: episodes[index].vip,
+                  current: index == currentIndex,
+                  focusNode: node,
+                  onFocus: onFocus,
+                  onPressed: () => Navigator.pop(context, index),
+                ),
+              ),
+            ),
     ),
     actions: [
       TextButton(

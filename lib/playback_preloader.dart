@@ -35,7 +35,7 @@ class PlaybackPreloader extends ChangeNotifier {
   }
 
   String _key(Drama drama, Episode episode, int quality, bool online) =>
-      '${drama.id}\u0000${episode.number}\u0000$quality\u0000$online';
+      '${drama.id}\u0000${episode.lineId}\u0000${episode.id}\u0000${episode.number}\u0000$quality\u0000$online';
 
   void prepare(
     Drama drama,

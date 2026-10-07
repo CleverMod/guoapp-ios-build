@@ -177,7 +177,10 @@ func (c *attachedClient) importedChapters(id string, lines []importedLine) ([]Ch
 				title = firstNonEmpty(line.name, line.key) + " · " + name
 			}
 			payload := attachedJSON(importedPayload{Player: line.key, URL: episode.url, Series: episode.series})
-			chapters = append(chapters, attachedChapter(c.p.id, id, key, i+1, title, payload, ""))
+			chapter := attachedChapter(c.p.id, id, key, i+1, title, payload, "")
+			chapter.LineID = attachedSHA(line.key)[:24]
+			chapter.LineName = truncate(cleanText(firstNonEmpty(line.name, line.key)), 128)
+			chapters = append(chapters, chapter)
 		}
 	}
 	return chapters, count

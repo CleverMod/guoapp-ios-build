@@ -39,6 +39,18 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   DramaDetail? _detail;
+  String? _lineId;
+  List<Episode> get _episodes => _detail?.episodesForLine(_lineId) ?? const [];
+  void _selectEpisodeLine(String id) => setState(() {
+    _lineId = id;
+    _episodePage = 0;
+  });
+  Widget _lineSelector() => EpisodeLineSelector(
+    lines: _detail?.lines ?? const [],
+    selectedId: _episodes.firstOrNull?.lineId ?? '',
+    onChanged: _selectEpisodeLine,
+    keyPrefix: 'detail-line',
+  );
   String? _error;
   bool _loading = true;
   int _generation = 0;
@@ -107,11 +119,12 @@ class _DetailScreenState extends State<DetailScreen> {
       setState(() {
         _detail = DramaDetail(merged, detail.episodes, warning: detail.warning);
         _loading = false;
+        _lineId = _detail!
+            .episodesForLine(_lineId ?? widget.store.watched(merged.id)?.lineId)
+            .firstOrNull
+            ?.lineId;
         _episodePage =
-            resumeEpisodeIndex(
-              detail.episodes,
-              widget.store.watched(merged.id),
-            ) ~/
+            resumeEpisodeIndex(_episodes, widget.store.watched(merged.id)) ~/
             episodePageSize;
       });
       widget.repository.catalogUpdates.publish(merged, retryCover: true);
@@ -126,10 +139,7 @@ class _DetailScreenState extends State<DetailScreen> {
         if (widget.resumeOnOpen) {
           unawaited(
             _play(
-              resumeEpisodeIndex(
-                detail.episodes,
-                widget.store.watched(merged.id),
-              ),
+              resumeEpisodeIndex(_episodes, widget.store.watched(merged.id)),
               resume: true,
             ),
           );
@@ -185,6 +195,7 @@ class _DetailScreenState extends State<DetailScreen> {
       MaterialPageRoute(
         builder: (_) => DownloadPicker(
           detail: detail,
+          initialLineId: _lineId,
           preferences: widget.store.downloadPreferences,
         ),
       ),
@@ -231,15 +242,17 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Future<void> _play(int index, {bool resume = false}) async {
     final detail = _detail;
+    final episodes = _episodes;
     if (detail == null ||
         index < 0 ||
-        index >= detail.episodes.length ||
+        index >= episodes.length ||
         _profileEpoch != widget.store.profileEpoch ||
         !widget.store.allowsSource(detail.drama.source)) {
       return;
     }
-    if (detail.episodes[index].vip &&
-        detail.drama.source != SourceSite.dsd.id) {
+    final episode = episodes[index];
+    final sourceIndex = detail.episodes.indexOf(episode);
+    if (episode.vip && detail.drama.source != SourceSite.dsd.id) {
       final accepted = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -265,8 +278,9 @@ class _DetailScreenState extends State<DetailScreen> {
     final saved = widget.store.watched(detail.drama.id);
     final position =
         resume &&
-            saved?.episode == detail.episodes[index].number &&
-            !saved!.finished
+            saved?.episode == episode.number &&
+            (saved!.lineId.isEmpty || saved.lineId == episode.lineId) &&
+            !saved.finished
         ? saved.position
         : 0.0;
     if (!mounted || _profileEpoch != widget.store.profileEpoch) {
@@ -276,7 +290,7 @@ class _DetailScreenState extends State<DetailScreen> {
       MaterialPageRoute<void>(
         builder: (_) => PlayerScreen(
           detail: detail,
-          initialIndex: index,
+          initialIndex: sourceIndex,
           initialPosition: position,
           repository: widget.repository,
           store: widget.store,
@@ -284,7 +298,9 @@ class _DetailScreenState extends State<DetailScreen> {
       ),
     );
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _lineId = widget.store.watched(detail.drama.id)?.lineId ?? _lineId;
+      });
     }
   }
 
@@ -317,7 +333,7 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget build(BuildContext context) {
     final drama = _detail?.drama ?? widget.drama;
     final watched = widget.store.watched(drama.id);
-    final episodes = _detail?.episodes ?? <Episode>[];
+    final episodes = _episodes;
     final resumeIndex = resumeEpisodeIndex(episodes, watched);
     final television = AppLayout.isTelevision(context);
     final allowed =
@@ -377,9 +393,11 @@ class _DetailScreenState extends State<DetailScreen> {
                               : Column(
                                   children: [
                                     _seriesSelector(drama),
+                                    _lineSelector(),
                                     Expanded(
                                       child: EpisodeBrowser(
                                         episodes: episodes,
+                                        currentId: watched?.episodeId,
                                         currentNumber: watched?.episode,
                                         onSelected: (index) => _play(index),
                                       ),
@@ -412,6 +430,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         )
                       else ...[
                         SliverToBoxAdapter(child: _seriesSelector(drama)),
+                        SliverToBoxAdapter(child: _lineSelector()),
                         SliverToBoxAdapter(
                           child: _episodeSummary(
                             episodes,
@@ -455,10 +474,14 @@ class _DetailScreenState extends State<DetailScreen> {
                               ) {
                                 final episode = visible[index];
                                 return RemoteEpisodeButton(
-                                  key: ValueKey('episode-${episode.number}'),
+                                  key: ValueKey(
+                                    'episode-${episode.browserKey}',
+                                  ),
                                   number: episode.number,
                                   vip: episode.vip,
-                                  current: episode.number == watched?.episode,
+                                  current: watched?.episodeId.isNotEmpty == true
+                                      ? episode.id == watched!.episodeId
+                                      : episode.number == watched?.episode,
                                   onPressed: () => _play(start + index),
                                 );
                               }, childCount: visible.length),
@@ -597,7 +620,7 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   void _locateEpisode(int index) {
-    final episodes = _detail!.episodes;
+    final episodes = _episodes;
     setState(() {
       _episodePage = index ~/ episodePageSize;
     });

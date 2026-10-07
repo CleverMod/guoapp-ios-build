@@ -525,6 +525,8 @@ class LocalStore extends ChangeNotifier {
           : WatchEntry(
               drama: previous.merge(entry.drama),
               episode: entry.episode,
+              episodeId: entry.episodeId,
+              lineId: entry.lineId,
               position: entry.position,
               duration: entry.duration,
               updatedAt: entry.updatedAt,
@@ -655,6 +657,8 @@ class LocalStore extends ChangeNotifier {
           history[drama.id] = WatchEntry(
             drama: watched.drama.merge(drama),
             episode: watched.episode,
+            episodeId: watched.episodeId,
+            lineId: watched.lineId,
             position: watched.position,
             duration: watched.duration,
             updatedAt: watched.updatedAt,

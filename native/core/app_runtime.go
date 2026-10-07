@@ -823,7 +823,7 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 			}
 		}
 	}
-	drama.Source, drama.SourceID, drama.Episodes = source, sourceID, len(chapters)
+	drama.Source, drama.SourceID, drama.Episodes = source, sourceID, chapterEpisodeCount(chapters)
 	if source == sourceHuangju || source == sourceYeguo {
 		drama.Episodes = max(drama.Episodes, nativeNormalize(raw).Episodes)
 	}

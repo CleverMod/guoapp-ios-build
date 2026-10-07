@@ -136,7 +136,7 @@ class DownloadCollectionUpdater extends ChangeNotifier {
       _check(drama.source);
       final preferences = store.downloadPreferences;
       final episodes = {
-        for (final episode in detail.episodes)
+        for (final episode in detail.defaultEpisodes)
           if (preferences.includeVip || !episode.vip) episode.number: episode,
       }.values.toList();
       for (var offset = 0; offset < episodes.length; offset += 500) {

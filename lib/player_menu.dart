@@ -353,18 +353,24 @@ class PlayerEpisodeGrid extends StatelessWidget {
     required this.currentIndex,
     required this.onSelected,
     this.keyPrefix = 'play-episode',
+    this.onLineSelected,
     this.compact = false,
     this.title = '选集',
   });
   final List<Episode> episodes;
   final int currentIndex;
   final ValueChanged<int> onSelected;
+  final ValueChanged<int>? onLineSelected;
   final String keyPrefix;
   final bool compact;
   final String title;
   @override
   Widget build(BuildContext context) => EpisodeBrowser(
     episodes: episodes,
+    currentId: episodes.isEmpty
+        ? null
+        : episodes[currentIndex.clamp(0, episodes.length - 1)].id,
+    onLineSelected: onLineSelected ?? onSelected,
     currentNumber: episodes.isEmpty
         ? null
         : episodes[currentIndex.clamp(0, episodes.length - 1)].number,

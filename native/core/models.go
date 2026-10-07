@@ -74,6 +74,25 @@ type Chapter struct {
 	MediaSize      int64           `json:"mediaSize"`
 	PageURL        string          `json:"pageUrl,omitempty"`
 	Referer        string          `json:"referer,omitempty"`
+	LineID         string          `json:"lineId,omitempty"`
+	LineName       string          `json:"lineName,omitempty"`
+}
+
+func chapterEpisodeCount(chapters []Chapter) int {
+	lines := map[string]int{}
+	grouped := false
+	for _, chapter := range chapters {
+		grouped = grouped || chapter.LineID != ""
+		lines[chapter.LineID]++
+	}
+	if !grouped {
+		return len(chapters)
+	}
+	count := 0
+	for _, size := range lines {
+		count = max(count, size)
+	}
+	return count
 }
 
 func (c Chapter) EpisodeString(fallback int) string {

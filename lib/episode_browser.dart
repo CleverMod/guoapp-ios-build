@@ -9,6 +9,48 @@ import 'remote_widgets.dart';
 
 const episodePageSize = 50;
 
+class EpisodeLineSelector extends StatelessWidget {
+  const EpisodeLineSelector({
+    super.key,
+    required this.lines,
+    required this.selectedId,
+    required this.onChanged,
+    this.keyPrefix = 'episode-line',
+  });
+  final List<EpisodeLine> lines;
+  final String selectedId;
+  final ValueChanged<String> onChanged;
+  final String keyPrefix;
+
+  @override
+  Widget build(BuildContext context) {
+    if (lines.length < 2) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('$keyPrefix-$selectedId'),
+        initialValue: selectedId,
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: '播放线路', isDense: true),
+        items: [
+          for (final line in lines)
+            DropdownMenuItem(
+              value: line.id,
+              child: Text(
+                '${line.name} · ${line.episodes.length} 集',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: (value) {
+          if (value != null) onChanged(value);
+        },
+      ),
+    );
+  }
+}
+
 class EpisodeRangeBar extends StatelessWidget {
   const EpisodeRangeBar({
     super.key,
@@ -151,6 +193,8 @@ class EpisodeBrowser extends StatefulWidget {
     required this.episodes,
     required this.onSelected,
     this.currentNumber,
+    this.currentId,
+    this.onLineSelected,
     this.selectedNumbers,
     this.keyPrefix = 'episode',
     this.title = '选集',
@@ -159,6 +203,8 @@ class EpisodeBrowser extends StatefulWidget {
   final List<Episode> episodes;
   final ValueChanged<int> onSelected;
   final int? currentNumber;
+  final String? currentId;
+  final ValueChanged<int>? onLineSelected;
   final Set<int>? selectedNumbers;
   final String keyPrefix;
   final String title;
@@ -168,32 +214,64 @@ class EpisodeBrowser extends StatefulWidget {
 }
 
 class _EpisodeBrowserState extends State<EpisodeBrowser> {
+  String? _lineId;
+  List<EpisodeLine> get _lines => EpisodeLine.group(widget.episodes);
+  String get _selectedLineId {
+    if (_lines.isEmpty) return '';
+    final current = widget.episodes
+        .where((episode) => episode.id == widget.currentId)
+        .firstOrNull;
+    final id = _lineId ?? current?.lineId;
+    return _lines
+        .firstWhere((line) => line.id == id, orElse: () => _lines.first)
+        .id;
+  }
+
+  List<Episode> get _episodes => _lines.isEmpty
+      ? const []
+      : _lines.firstWhere((line) => line.id == _selectedLineId).episodes;
+  bool _isCurrent(Episode episode) => widget.currentId?.isNotEmpty == true
+      ? episode.id == widget.currentId
+      : episode.number == widget.currentNumber;
+  int? get _currentNumber => _episodes.where(_isCurrent).firstOrNull?.number;
+  void _selectEpisode(int index) =>
+      widget.onSelected(widget.episodes.indexOf(_episodes[index]));
+  void _selectLine(String id) {
+    setState(() {
+      _lineId = id;
+      _page = 0;
+      _located = null;
+      _layout = '';
+    });
+    final index = _episodes.indexWhere(
+      (episode) => episode.number == widget.currentNumber,
+    );
+    if (index >= 0) {
+      widget.onLineSelected?.call(widget.episodes.indexOf(_episodes[index]));
+    }
+  }
+
   final _scroll = ScrollController();
   String _layout = '';
   int get _pageSize => episodePageSize;
-  late int _page =
-      max(
-        0,
-        widget.episodes.indexWhere((e) => e.number == widget.currentNumber),
-      ) ~/
-      _pageSize;
+  late int _page = max(0, _episodes.indexWhere(_isCurrent)) ~/ _pageSize;
   int? _located;
 
   @override
   void didUpdateWidget(EpisodeBrowser oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentNumber != widget.currentNumber) {
+    if (oldWidget.currentNumber != widget.currentNumber ||
+        oldWidget.currentId != widget.currentId) {
+      final current = widget.episodes
+          .where((episode) => episode.id == widget.currentId)
+          .firstOrNull;
+      if (current != null) _lineId = current.lineId;
       _page =
-          max(
-            0,
-            widget.episodes.indexWhere(
-              (episode) => episode.number == widget.currentNumber,
-            ),
-          ) ~/
+          max(0, _episodes.indexWhere((episode) => _isCurrent(episode))) ~/
           _pageSize;
       _located = null;
     }
-    _page = _page.clamp(0, max(0, (widget.episodes.length - 1) ~/ _pageSize));
+    _page = _page.clamp(0, max(0, (_episodes.length - 1) ~/ _pageSize));
   }
 
   @override
@@ -204,23 +282,41 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.compact) return _continuousGrid(context);
+    if (widget.compact) {
+      return Column(
+        children: [
+          EpisodeLineSelector(
+            lines: _lines,
+            selectedId: _selectedLineId,
+            keyPrefix: '${widget.keyPrefix}-line',
+            onChanged: _selectLine,
+          ),
+          Expanded(child: _continuousGrid(context)),
+        ],
+      );
+    }
     final pageSize = _pageSize;
-    _page = _page.clamp(0, max(0, (widget.episodes.length - 1) ~/ pageSize));
+    _page = _page.clamp(0, max(0, (_episodes.length - 1) ~/ pageSize));
     final start = _page * pageSize;
-    final visible = widget.episodes.skip(start).take(pageSize).toList();
+    final visible = _episodes.skip(start).take(pageSize).toList();
     final television = AppLayout.isTelevision(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        EpisodeLineSelector(
+          lines: _lines,
+          selectedId: _selectedLineId,
+          keyPrefix: '${widget.keyPrefix}-line',
+          onChanged: _selectLine,
+        ),
         EpisodeRangeBar(
-          episodes: widget.episodes,
+          episodes: _episodes,
           page: _page,
           title: widget.title,
-          currentNumber: widget.currentNumber,
+          currentNumber: _currentNumber,
           onLocate: (index) => setState(() {
             _page = index ~/ episodePageSize;
-            _located = widget.episodes[index].number;
+            _located = _episodes[index].number;
           }),
         ),
         Expanded(
@@ -255,8 +351,7 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
               final target = max(
                 0,
                 visible.indexWhere(
-                  (episode) =>
-                      episode.number == (_located ?? widget.currentNumber),
+                  (episode) => episode.number == (_located ?? _currentNumber),
                 ),
               );
               final layout =
@@ -281,9 +376,7 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
                 controller: _scroll,
                 autofocus: television && _located != null,
                 initialIndex: target,
-                itemKeys: visible
-                    .map((episode) => '${episode.number}')
-                    .toList(),
+                itemKeys: visible.map((episode) => episode.browserKey).toList(),
                 columns: columns,
                 itemExtent: extent,
                 spacing: widget.compact ? 6 : 8,
@@ -293,16 +386,16 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
                 itemBuilder: (_, index, node, onFocus) {
                   final episode = visible[index];
                   return RemoteEpisodeButton(
-                    key: ValueKey('${widget.keyPrefix}-${episode.number}'),
+                    key: ValueKey('${widget.keyPrefix}-${episode.browserKey}'),
                     number: episode.number,
                     vip: episode.vip,
                     compact: widget.compact,
                     current:
                         widget.selectedNumbers?.contains(episode.number) ??
-                        episode.number == widget.currentNumber,
+                        _isCurrent(episode),
                     focusNode: node,
                     onFocus: onFocus,
-                    onPressed: () => widget.onSelected(start + index),
+                    onPressed: () => _selectEpisode(start + index),
                   );
                 },
               );
@@ -326,7 +419,7 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
         separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, page) {
           final start = page * episodePageSize;
-          final end = min(start + episodePageSize, widget.episodes.length) - 1;
+          final end = min(start + episodePageSize, _episodes.length) - 1;
           final selected = page == selectedPage;
           return OutlinedButton(
             style: OutlinedButton.styleFrom(
@@ -345,12 +438,10 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
             ),
             onPressed: () {
               setState(() {
-                _located = widget.episodes[start].number;
+                _located = _episodes[start].number;
               });
             },
-            child: Text(
-              '${widget.episodes[start].number}-${widget.episodes[end].number}',
-            ),
+            child: Text('${_episodes[start].number}-${_episodes[end].number}'),
           );
         },
       ),
@@ -361,7 +452,7 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
     builder: (context, constraints) {
       final television = AppLayout.isTelevision(context);
       final scale = MediaQuery.textScalerOf(context);
-      final digits = widget.episodes.fold<int>(
+      final digits = _episodes.fold<int>(
         1,
         (value, episode) => max(value, episode.number.toString().length),
       );
@@ -373,13 +464,13 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
       final extent = max(34.0, scale.scale(14) + 18);
       final target = max(
         0,
-        widget.episodes.indexWhere(
-          (episode) => episode.number == (_located ?? widget.currentNumber),
+        _episodes.indexWhere(
+          (episode) => episode.number == (_located ?? _currentNumber),
         ),
       );
-      final pageCount = (widget.episodes.length / episodePageSize).ceil();
+      final pageCount = (_episodes.length / episodePageSize).ceil();
       final layout =
-          'compact:${widget.episodes.length}:$_located:${widget.currentNumber}:$columns:$extent:${constraints.maxHeight}';
+          'compact:${_episodes.length}:$_located:${widget.currentNumber}:$columns:$extent:${constraints.maxHeight}';
       if (layout != _layout) {
         _layout = layout;
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -401,26 +492,24 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
               controller: _scroll,
               autofocus: television && _located != null,
               initialIndex: target,
-              itemKeys: widget.episodes
-                  .map((episode) => '${episode.number}')
-                  .toList(),
+              itemKeys: _episodes.map((episode) => episode.browserKey).toList(),
               columns: columns,
               itemExtent: extent,
               spacing: 5,
               padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
               itemBuilder: (_, index, node, onFocus) {
-                final episode = widget.episodes[index];
+                final episode = _episodes[index];
                 return RemoteEpisodeButton(
-                  key: ValueKey('${widget.keyPrefix}-${episode.number}'),
+                  key: ValueKey('${widget.keyPrefix}-${episode.browserKey}'),
                   number: episode.number,
                   vip: episode.vip,
                   compact: true,
                   current:
                       widget.selectedNumbers?.contains(episode.number) ??
-                      episode.number == widget.currentNumber,
+                      _isCurrent(episode),
                   focusNode: node,
                   onFocus: onFocus,
-                  onPressed: () => widget.onSelected(index),
+                  onPressed: () => _selectEpisode(index),
                 );
               },
             ),

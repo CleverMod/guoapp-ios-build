@@ -99,6 +99,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   late int _index;
   late final int _profileEpoch;
   int _openedIndex = -1;
+  int get _previousEpisode =>
+      episodeNeighborIndex(widget.detail.episodes, _index, -1);
+  int get _nextEpisode =>
+      episodeNeighborIndex(widget.detail.episodes, _index, 1);
   int _generation = 0;
   int _requestedQuality = 0;
   bool _loading = true;
@@ -223,9 +227,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       onSeek: _seekTo,
       onFullscreen: _rotate,
       onEpisode: (direction) {
-        final next = _index + direction;
-        if (next < 0) return '已经是第一集';
-        if (next >= widget.detail.episodes.length) return '已经是最后一集';
+        final next = episodeNeighborIndex(
+          widget.detail.episodes,
+          _index,
+          direction,
+        );
+        if (next < 0) return direction < 0 ? '已经是第一集' : '已经是最后一集';
         unawaited(_play(next));
         return '第 ${widget.detail.episodes[next].number} 集';
       },
@@ -276,8 +283,8 @@ class _PlayerScreenState extends State<PlayerScreen>
           } else if (_autoAdvance &&
               _foreground &&
               !_panelOpen &&
-              _index + 1 < widget.detail.episodes.length) {
-            _play(_index + 1, showControlsOnReady: false);
+              _nextEpisode >= 0) {
+            _play(_nextEpisode, showControlsOnReady: false);
           } else {
             _playIntent = false;
             _interactions.cancel();
@@ -689,7 +696,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         _openedIndex != _index ||
         widget.store.profileEpoch != _profileEpoch ||
         widget.store.locked ||
-        _index + 1 >= widget.detail.episodes.length) {
+        _nextEpisode < 0) {
       _preloader.clear();
       return;
     }
@@ -708,7 +715,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     _preloader.prepare(
       widget.detail.drama,
-      widget.detail.episodes[_index + 1],
+      widget.detail.episodes[_nextEpisode],
       quality: _requestedQuality,
     );
   }
@@ -920,6 +927,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     final entry = WatchEntry(
       drama: widget.repository.catalogUpdates.current(widget.detail.drama),
       episode: widget.detail.episodes[_openedIndex].number,
+      episodeId: widget.detail.episodes[_openedIndex].id,
+      lineId: widget.detail.episodes[_openedIndex].lineId,
       position: position,
       duration: duration,
       updatedAt: DateTime.now(),
@@ -1394,7 +1403,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         ),
       );
       if (mounted && !_closed && index != null && index != _index) {
-        await _play(index);
+        await _selectPlaybackEpisode(index);
       }
     } finally {
       if (mounted && !_closed) {
@@ -1455,7 +1464,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (mounted && !_closed) setState(() => _panelOpen = false);
     }
     if (index != null && mounted && !_closed && index != _index) {
-      await _play(index);
+      await _selectPlaybackEpisode(index);
     }
   }
 
@@ -1726,10 +1735,10 @@ class _PlayerScreenState extends State<PlayerScreen>
             enhancement: _enhancementForUi,
             onTogglePlayback: _togglePlayback,
             onSeek: _seek,
-            onPrevious: _index > 0 ? () => _play(_index - 1) : null,
-            onNext: _index + 1 < widget.detail.episodes.length
-                ? () => _play(_index + 1)
+            onPrevious: _previousEpisode >= 0
+                ? () => _play(_previousEpisode)
                 : null,
+            onNext: _nextEpisode >= 0 ? () => _play(_nextEpisode) : null,
             onEpisodes: () => _televisionEpisodes(context),
             onSettings: () => _televisionSettings(context),
             onBack: _back,
@@ -1767,10 +1776,10 @@ class _PlayerScreenState extends State<PlayerScreen>
             onPictureInPicture: _canUsePictureInPicture
                 ? _enterPictureInPicture
                 : null,
-            onPrevious: _index > 0 ? () => _play(_index - 1) : null,
-            onNext: _index + 1 < widget.detail.episodes.length
-                ? () => _play(_index + 1)
+            onPrevious: _previousEpisode >= 0
+                ? () => _play(_previousEpisode)
                 : null,
+            onNext: _nextEpisode >= 0 ? () => _play(_nextEpisode) : null,
           );
     final layeredControls = Stack(
       fit: StackFit.expand,
@@ -2157,10 +2166,29 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     return DownloadPicker(
       detail: widget.detail,
+      initialLineId: widget.detail.episodes[_index].lineId,
       preferences: widget.store.downloadPreferences,
       embedded: true,
       onSubmit: _submitDownloadSelection,
     );
+  }
+
+  Future<void> _selectPlaybackEpisode(int index) {
+    final current = widget.detail.episodes[_index];
+    final next = widget.detail.episodes[index];
+    final sameEpisode =
+        current.lineId != next.lineId && current.number == next.number;
+    final retain = sameEpisode && !_player.state.completed;
+    return _play(
+      index,
+      position: retain ? _currentPosition : 0,
+      playWhenReady: retain ? _playIntent : true,
+    );
+  }
+
+  void _switchEpisodeLine(int index) {
+    if (index == _index || _closed) return;
+    unawaited(_selectPlaybackEpisode(index));
   }
 
   Widget _episodePanel({bool compact = false}) => ColoredBox(
@@ -2170,7 +2198,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       currentIndex: _index,
       compact: compact,
       title: compact ? '剧集' : '选集',
-      onSelected: (index) => _play(index),
+      onSelected: (index) => _selectPlaybackEpisode(index),
+      onLineSelected: _switchEpisodeLine,
     ),
   );
 }

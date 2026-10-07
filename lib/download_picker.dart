@@ -16,11 +16,13 @@ class DownloadPicker extends StatefulWidget {
     required this.detail,
     this.preferences = const DownloadPreferences(),
     this.embedded = false,
+    this.initialLineId,
     this.onSubmit,
   });
   final DramaDetail detail;
   final DownloadPreferences preferences;
   final bool embedded;
+  final String? initialLineId;
   final Future<void> Function(DownloadSelection selection)? onSubmit;
 
   @override
@@ -28,7 +30,11 @@ class DownloadPicker extends StatefulWidget {
 }
 
 class _DownloadPickerState extends State<DownloadPicker> {
-  late final _selected = widget.detail.episodes
+  late String _lineId =
+      widget.detail.episodesForLine(widget.initialLineId).firstOrNull?.lineId ??
+      '';
+  List<Episode> get _episodes => widget.detail.episodesForLine(_lineId);
+  late final _selected = _episodes
       .where((episode) => widget.preferences.includeVip || !episode.vip)
       .take(500)
       .map((episode) => episode.number)
@@ -64,9 +70,7 @@ class _DownloadPickerState extends State<DownloadPicker> {
   Future<void> _submit() async {
     if (_selected.isEmpty || _submitting) return;
     final selection = DownloadSelection(
-      widget.detail.episodes
-          .where((episode) => _selected.contains(episode.number))
-          .toList(),
+      _episodes.where((episode) => _selected.contains(episode.number)).toList(),
       _quality,
     );
     if (widget.onSubmit == null) {
@@ -90,7 +94,7 @@ class _DownloadPickerState extends State<DownloadPicker> {
 
   @override
   Widget build(BuildContext context) {
-    final episodes = widget.detail.episodes;
+    final episodes = _episodes;
     final hasVip = episodes.any(
       (episode) => episode.vip && _selected.contains(episode.number),
     );
@@ -211,6 +215,27 @@ class _DownloadPickerState extends State<DownloadPicker> {
                     ),
                   ),
                 ),
+              EpisodeLineSelector(
+                lines: widget.detail.lines,
+                selectedId: _lineId,
+                keyPrefix: 'download-line',
+                onChanged: (id) {
+                  if (_submitting) return;
+                  setState(() {
+                    _lineId = id;
+                    _selected.clear();
+                    _selected.addAll(
+                      _episodes
+                          .where(
+                            (episode) =>
+                                widget.preferences.includeVip || !episode.vip,
+                          )
+                          .take(500)
+                          .map((episode) => episode.number),
+                    );
+                  });
+                },
+              ),
               Expanded(
                 child: EpisodeBrowser(
                   episodes: episodes,

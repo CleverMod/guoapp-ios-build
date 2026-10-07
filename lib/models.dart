@@ -325,6 +325,47 @@ class Episode {
   final String title;
   final int number;
   final bool vip;
+  String get lineId => raw['lineId'] as String? ?? '';
+  String get lineName => raw['lineName'] as String? ?? '';
+  String get browserKey => lineId.isEmpty ? '$number' : '$lineId:$id';
+}
+
+class EpisodeLine {
+  const EpisodeLine(this.id, this.name, this.episodes);
+  final String id;
+  final String name;
+  final List<Episode> episodes;
+
+  static List<EpisodeLine> group(List<Episode> episodes) {
+    final groups = <String, List<Episode>>{};
+    for (final episode in episodes) {
+      (groups[episode.lineId] ??= []).add(episode);
+    }
+    return [
+      for (final entry in groups.entries)
+        EpisodeLine(
+          entry.key,
+          entry.value.first.lineName.isEmpty
+              ? '默认线路'
+              : entry.value.first.lineName,
+          entry.value,
+        ),
+    ];
+  }
+}
+
+int episodeNeighborIndex(List<Episode> episodes, int index, int direction) {
+  if (index < 0 || index >= episodes.length || direction == 0) return -1;
+  final lineId = episodes[index].lineId;
+  final step = direction > 0 ? 1 : -1;
+  for (
+    var next = index + step;
+    next >= 0 && next < episodes.length;
+    next += step
+  ) {
+    if (episodes[next].lineId == lineId) return next;
+  }
+  return -1;
 }
 
 class DramaDetail {
@@ -332,6 +373,13 @@ class DramaDetail {
   final Drama drama;
   final List<Episode> episodes;
   final String warning;
+  late final List<EpisodeLine> lines = EpisodeLine.group(episodes);
+  List<Episode> episodesForLine(String? id) => lines.isEmpty
+      ? const []
+      : lines
+            .firstWhere((line) => line.id == id, orElse: () => lines.first)
+            .episodes;
+  List<Episode> get defaultEpisodes => episodesForLine(null);
   factory DramaDetail.fromJson(Map<String, dynamic> json) {
     final rows = json['chapters'] as List? ?? const [];
     return DramaDetail(
@@ -426,12 +474,16 @@ class WatchEntry {
     required this.position,
     required this.duration,
     required this.updatedAt,
+    this.episodeId = '',
+    this.lineId = '',
   });
   final Drama drama;
   final int episode;
   final double position;
   final double duration;
   final DateTime updatedAt;
+  final String episodeId;
+  final String lineId;
   bool get finished => duration > 1 && position >= duration - 1;
   Map<String, dynamic> toJson() => {
     'drama': drama.toJson(),
@@ -439,6 +491,8 @@ class WatchEntry {
     'position': position,
     'duration': duration,
     'updatedAt': updatedAt.toIso8601String(),
+    if (episodeId.isNotEmpty) 'episodeId': episodeId,
+    if (lineId.isNotEmpty) 'lineId': lineId,
   };
   factory WatchEntry.fromJson(Map<String, dynamic> json) => WatchEntry(
     drama: Drama.fromJson(Map<String, dynamic>.from(json['drama'] as Map)),
@@ -447,6 +501,8 @@ class WatchEntry {
     duration: (json['duration'] as num?)?.toDouble() ?? 0,
     updatedAt:
         DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime(2000),
+    episodeId: json['episodeId'] as String? ?? '',
+    lineId: json['lineId'] as String? ?? '',
   );
 }
 

@@ -243,9 +243,26 @@ class SeriesSeasonNotice {
 
 int resumeEpisodeIndex(List<Episode> episodes, WatchEntry? watch) {
   if (episodes.isEmpty || watch == null) return 0;
-  final current = episodes.indexWhere((item) => item.number == watch.episode);
+  final lineId = episodes.any((item) => item.lineId == watch.lineId)
+      ? watch.lineId
+      : episodes.first.lineId;
+  var current = episodes.indexWhere(
+    (item) =>
+        item.lineId == lineId &&
+        (watch.episodeId.isNotEmpty
+            ? item.id == watch.episodeId
+            : item.number == watch.episode),
+  );
+  if (current < 0) {
+    current = episodes.indexWhere(
+      (item) => item.lineId == lineId && item.number == watch.episode,
+    );
+  }
   if (current >= 0 && !watch.finished) return current;
-  final next = episodes.indexWhere((item) => item.number > watch.episode);
+  final next = episodes.indexWhere(
+    (item) => item.lineId == lineId && item.number > watch.episode,
+  );
   if (next >= 0) return next;
-  return current >= 0 ? current : episodes.length - 1;
+  if (current >= 0) return current;
+  return episodes.lastIndexWhere((item) => item.lineId == lineId);
 }
