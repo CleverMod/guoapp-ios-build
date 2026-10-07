@@ -197,6 +197,7 @@ void main() {
       }
       expect(player.disposed, isTrue);
       expect(tester.takeException(), isNull);
+      debugDefaultTargetPlatformOverride = null;
     },
   );
 
