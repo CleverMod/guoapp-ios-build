@@ -304,7 +304,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                           8,
                           _topChromeInset(),
                           8,
-                          _bottomChromeInset(),
+                          _bottomChromeInset(constraints.maxHeight),
                         ),
                         child: Stack(
                           children: [
@@ -510,9 +510,12 @@ class _PlayerControlsState extends State<PlayerControls> {
     return 0;
   }
 
-  double _bottomChromeInset() {
+  double _bottomChromeInset(double height) {
     if (widget.fullscreen) {
-      return (MediaQuery.viewPaddingOf(context).bottom + 24).clamp(64.0, 104.0);
+      final available = (height - _topChromeInset() - 80).clamp(0.0, 104.0);
+      return (MediaQuery.viewPaddingOf(context).bottom + 24)
+          .clamp(64.0, 104.0)
+          .clamp(0.0, available);
     }
     return 0;
   }

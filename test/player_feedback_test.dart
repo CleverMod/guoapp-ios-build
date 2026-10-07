@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -19,6 +20,34 @@ class FeedbackPlayer extends ScriptedPlayer {
   Future<void> play() async {
     state = state.copyWith(playing: true);
     playingController.add(true);
+  }
+}
+
+class FeedbackOwner extends StatefulWidget {
+  const FeedbackOwner({
+    super.key,
+    required this.player,
+    required this.interactions,
+    required this.child,
+  });
+
+  final Player player;
+  final PlayerInteractions interactions;
+  final Widget child;
+
+  @override
+  State<FeedbackOwner> createState() => _FeedbackOwnerState();
+}
+
+class _FeedbackOwnerState extends State<FeedbackOwner> {
+  @override
+  Widget build(BuildContext context) => widget.child;
+
+  @override
+  void dispose() {
+    widget.interactions.dispose();
+    unawaited(widget.player.dispose());
+    super.dispose();
   }
 }
 
@@ -62,6 +91,11 @@ void main() {
     );
     final fontPath = Platform.environment['PLAYER_FEEDBACK_FONT'];
     String? fontFamily;
+    await tester.runAsync(() async {
+      final icons = FontLoader('MaterialIcons')
+        ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      await icons.load();
+    });
     if (fontPath != null && File(fontPath).existsSync()) {
       await tester.runAsync(() async {
         final loader = FontLoader('FeedbackTest')
@@ -75,57 +109,55 @@ void main() {
         theme: ThemeData.dark().copyWith(
           textTheme: ThemeData.dark().textTheme.apply(fontFamily: fontFamily),
         ),
-        home: Scaffold(
-          body: RepaintBoundary(
-            key: const ValueKey('feedback-capture'),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF687B70), Color(0xFFC9BD91)],
+        home: FeedbackOwner(
+          player: player,
+          interactions: interactions,
+          child: Scaffold(
+            body: RepaintBoundary(
+              key: const ValueKey('feedback-capture'),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF687B70), Color(0xFFC9BD91)],
+                      ),
                     ),
                   ),
-                ),
-                const Align(
-                  alignment: Alignment(-.35, .15),
-                  child: Icon(Icons.landscape_rounded, size: 180),
-                ),
-                PlayerControls(
-                  player: player,
-                  interactions: interactions,
-                  enabled: true,
-                  fullscreen: true,
-                  showOnPlaybackReady: true,
-                  onFullscreen: () {},
-                  onBack: () {},
-                  onPrevious: null,
-                  onNext: null,
-                  title: '合成播放画面',
-                  onTogglePlayback: () => player.playOrPause(),
-                  onEpisodes: () async {},
-                  onSpeed: () async {},
-                  onQuality: () async {},
-                  onSettings: () async {},
-                  speed: 1.5,
-                  qualityLabel: '自动',
-                  onFocusSurface: () {},
-                  swipeEnabled: mobile,
-                ),
-              ],
+                  const Align(
+                    alignment: Alignment(-.35, .15),
+                    child: Icon(Icons.landscape_rounded, size: 180),
+                  ),
+                  PlayerControls(
+                    player: player,
+                    interactions: interactions,
+                    enabled: true,
+                    fullscreen: true,
+                    showOnPlaybackReady: true,
+                    onFullscreen: () {},
+                    onBack: () {},
+                    onPrevious: null,
+                    onNext: null,
+                    title: '合成播放画面',
+                    onTogglePlayback: () => player.playOrPause(),
+                    onEpisodes: () async {},
+                    onSpeed: () async {},
+                    onQuality: () async {},
+                    onSettings: () async {},
+                    speed: 1.5,
+                    qualityLabel: '自动',
+                    onFocusSurface: () {},
+                    swipeEnabled: mobile,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
     await tester.pump();
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
-      interactions.dispose();
-      await player.dispose();
-      await tester.pump();
-    });
     return (platform, interactions);
   }
 
@@ -166,6 +198,7 @@ void main() {
     final (player, interactions) = await mount(tester);
     final gesture = await tester.startGesture(const Offset(700, 160));
     await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     expect(player.state.rate, 3);
     expect(find.text('3.0 X'), findsOneWidget);
@@ -200,6 +233,7 @@ void main() {
     await tester.tapAt(const Offset(700, 160));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tapAt(const Offset(700, 160));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     expect(player.state.position, const Duration(seconds: 30));
     expect(find.text('前进 10 秒'), findsOneWidget);
@@ -220,6 +254,7 @@ void main() {
     final (_, interactions) = await mount(tester);
     final gesture = await tester.startGesture(const Offset(100, 180));
     await gesture.moveBy(const Offset(0, -25));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     expect(interactions.feedback.message, startsWith('亮度 '));
     expect(controlsOpacity(tester), 0);
@@ -240,6 +275,7 @@ void main() {
     await tester.pump();
     expect(interactions.feedback.visible, isTrue);
     await next.up();
+    await tester.pump(const Duration(milliseconds: 50));
   });
 
   testWidgets('iOS system volume keeps changing after its feedback expires', (
@@ -268,6 +304,7 @@ void main() {
       final gesture = await tester.startGesture(const Offset(700, 180));
       await tester.pump();
       await gesture.moveBy(const Offset(0, -25));
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 180));
       expect(interactions.feedback.message, startsWith('音量 '));
       expect(systemVolume, greaterThan(.6));
@@ -298,6 +335,7 @@ void main() {
       }
       interactions.beginScrub();
       interactions.updateScrub(const Duration(seconds: 35));
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 180));
       expect(player.state.playing, isFalse);
       expect(player.state.position, const Duration(seconds: 35));
@@ -331,6 +369,7 @@ void main() {
       Offset(timeline.left + timeline.width * .3, timeline.center.dy),
     );
     await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     expect(interactions.scrubbing, isTrue);
     expect(controlsOpacity(tester), 0);
@@ -352,8 +391,9 @@ void main() {
     tester,
   ) async {
     final (player, interactions) = await mount(tester);
-    final gesture = await tester.startGesture(const Offset(400, 160));
+    final gesture = await tester.startGesture(const Offset(400, 100));
     await gesture.moveBy(const Offset(50, 0));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     expect(interactions.scrubbing, isTrue);
     expect(player.state.playing, isFalse);
@@ -404,6 +444,7 @@ void main() {
       final (_, interactions) = await mount(tester, size: const Size(320, 180));
       tester.view.padding = const FakeViewPadding(top: 20, left: 24);
       interactions.seek(10);
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 180));
       final rect = tester.getRect(
         find.byKey(const ValueKey('player-feedback')),
