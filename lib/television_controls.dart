@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import 'models.dart';
 import 'episode_browser.dart';
 import 'playback_preferences.dart';
+import 'player_feedback.dart';
 import 'video_enhancement.dart';
 import 'video_enhancement_preferences.dart';
 import 'video_enhancement_settings.dart';
@@ -56,10 +57,9 @@ class _TelevisionControlsState extends State<TelevisionControls> {
   final _progress = FocusNode(debugLabel: 'tv-player-progress');
   final _subscriptions = <StreamSubscription<dynamic>>[];
   Timer? _hideTimer;
-  Timer? _seekTimer;
+  final _feedback = PlayerFeedbackController();
   bool _visible = true;
   bool _panelOpen = false;
-  bool _seekHint = false;
 
   @override
   void initState() {
@@ -112,6 +112,7 @@ class _TelevisionControlsState extends State<TelevisionControls> {
       }
     } else if (!widget.enabled) {
       _hideTimer?.cancel();
+      _feedback.clear();
     }
   }
 
@@ -149,13 +150,17 @@ class _TelevisionControlsState extends State<TelevisionControls> {
     });
   }
 
-  void _seek(int seconds) {
+  void _seek(int seconds, {bool repeat = false}) {
     widget.onSeek(seconds);
-    setState(() => _seekHint = true);
-    _seekTimer?.cancel();
-    _seekTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _seekHint = false);
-    });
+    final message = '${seconds > 0 ? '前进' : '后退'} ${seconds.abs()} 秒';
+    final icon = seconds > 0
+        ? Icons.fast_forward_rounded
+        : Icons.fast_rewind_rounded;
+    if (repeat) {
+      _feedback.update(message, icon: icon);
+    } else {
+      _feedback.show(message, icon: icon);
+    }
     _scheduleHide();
   }
 
@@ -210,10 +215,10 @@ class _TelevisionControlsState extends State<TelevisionControls> {
       if (event is KeyDownEvent) widget.onPrevious?.call();
     } else if ((!_visible || _progress.hasFocus) &&
         key == LogicalKeyboardKey.arrowLeft) {
-      _seek(-10);
+      _seek(-10, repeat: event is KeyRepeatEvent);
     } else if ((!_visible || _progress.hasFocus) &&
         key == LogicalKeyboardKey.arrowRight) {
-      _seek(10);
+      _seek(10, repeat: event is KeyRepeatEvent);
     } else if ((!_visible || _surface.hasPrimaryFocus) &&
         [
           LogicalKeyboardKey.arrowUp,
@@ -233,7 +238,7 @@ class _TelevisionControlsState extends State<TelevisionControls> {
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _seekTimer?.cancel();
+    _feedback.dispose();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -268,22 +273,8 @@ class _TelevisionControlsState extends State<TelevisionControls> {
             children: [
               if (state.buffering && widget.enabled)
                 const Center(child: CircularProgressIndicator()),
-              if (_seekHint && !_visible)
-                Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Text(
-                        '${formatPosition(position)} / ${formatPosition(duration)}',
-                        style: const TextStyle(fontSize: 26),
-                      ),
-                    ),
-                  ),
-                ),
+              if (!_visible)
+                PlayerFeedbackOverlay(feedback: _feedback, fontSize: 24),
               if (_visible && widget.enabled) ...[
                 const DecoratedBox(
                   decoration: BoxDecoration(

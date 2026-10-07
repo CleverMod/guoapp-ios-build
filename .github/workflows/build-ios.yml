@@ -89,6 +89,21 @@ jobs:
           path: dist/diagnostics/episode-lines.png
           if-no-files-found: ignore
           retention-days: 14
+      - name: Verify player operation feedback
+        env:
+          PLAYER_FEEDBACK_SCREENSHOTS: dist/diagnostics/player-feedback
+          PLAYER_FEEDBACK_FONT: /System/Library/Fonts/STHeiti Medium.ttc
+        run: |
+          dart analyze --fatal-infos lib/player_feedback.dart lib/player_interactions.dart lib/player_controls.dart lib/television_controls.dart test/player_feedback_test.dart test/television_player_test.dart
+          flutter test test/player_feedback_test.dart test/television_player_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
+      - name: Upload player feedback UI previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-feedback-ui-previews
+          path: dist/diagnostics/player-feedback/*.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload dependency lockfile
         if: inputs.refresh_lockfile
         uses: actions/upload-artifact@v4

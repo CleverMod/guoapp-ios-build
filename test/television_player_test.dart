@@ -124,6 +124,33 @@ void main() {
   );
 
   testWidgets(
+    'TV held seek expires after two seconds and a fresh press shows feedback',
+    (tester) async {
+      final repository = RouteRepository();
+      final player = ScriptedPlayer();
+      await mount(tester, repository, player);
+      await tester.pump(const Duration(seconds: 6));
+      await settle(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('前进 10 秒'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-play-pause')), findsNothing);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byKey(const ValueKey('player-feedback')), findsNothing);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      await settle(tester);
+      expect(player.state.position, const Duration(seconds: 37));
+      expect(find.byKey(const ValueKey('player-feedback')), findsNothing);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await press(tester, LogicalKeyboardKey.arrowLeft);
+      expect(find.text('后退 10 秒'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-play-pause')), findsNothing);
+      await leave(tester, repository, player);
+    },
+  );
+
+  testWidgets(
     'TV selection restores the current episode and panels keep focus during playback',
     (tester) async {
       final repository = RouteRepository();

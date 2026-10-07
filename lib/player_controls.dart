@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
-import 'app_layout.dart';
 import 'lan_controller.dart';
+import 'player_feedback.dart';
 import 'player_interactions.dart';
 import 'widgets.dart';
 import 'video_enhancement.dart';
@@ -108,6 +108,7 @@ class _PlayerControlsState extends State<PlayerControls> {
         final wasPlaying = _lastPlaying;
         _lastPlaying = playing;
         if (!mounted || !widget.enabled) return;
+        if (widget.interactions.operating) return;
         if (!playing) {
           _show();
         } else if (!wasPlaying) {
@@ -156,12 +157,13 @@ class _PlayerControlsState extends State<PlayerControls> {
 
   void _interactionChanged() {
     if (!mounted) return;
-    if (widget.interactions.scrubbing ||
-        widget.interactions.feedback.isNotEmpty) {
-      _show();
+    if (widget.interactions.operating || widget.interactions.feedback.visible) {
+      _hideTimer?.cancel();
+      setState(() => _visible = false);
+    } else {
+      setState(() {});
+      _scheduleHide();
     }
-    setState(() {});
-    _scheduleHide();
   }
 
   void _scheduleHide() {
@@ -178,7 +180,6 @@ class _PlayerControlsState extends State<PlayerControls> {
           !widget.panelOpen &&
           widget.player.state.playing &&
           !widget.player.state.buffering &&
-          !widget.interactions.boosting &&
           !widget.interactions.scrubbing) {
         setState(() => _visible = false);
       }
@@ -186,14 +187,15 @@ class _PlayerControlsState extends State<PlayerControls> {
   }
 
   void _show() {
-    if (!mounted) return;
+    if (!mounted || widget.interactions.operating) return;
     if (!_visible) setState(() => _visible = true);
     _scheduleHide();
   }
 
   void _tap() {
-    if (widget.interactions.suppressTap || widget.interactions.scrubbing)
+    if (widget.interactions.suppressTap || widget.interactions.scrubbing) {
       return;
+    }
     widget.onFocusSurface();
     setState(() => _visible = !_visible);
     _scheduleHide();
@@ -223,11 +225,10 @@ class _PlayerControlsState extends State<PlayerControls> {
     final position = state.position.inMilliseconds / 1000;
     final buffered = state.buffer.inMilliseconds / 1000;
     final visible =
-        _visible ||
-        !state.playing ||
-        state.buffering ||
         widget.panelOpen ||
-        widget.interactions.scrubbing;
+        (!widget.interactions.operating &&
+            !widget.interactions.feedback.visible &&
+            (_visible || !state.playing || state.buffering));
     return MouseRegion(
       onHover: (_) => _show(),
       cursor: visible ? SystemMouseCursors.basic : SystemMouseCursors.none,
@@ -264,7 +265,6 @@ class _PlayerControlsState extends State<PlayerControls> {
                     constraints.maxWidth,
                     mobile: widget.swipeEnabled,
                   );
-                  _show();
                 },
               ),
             ),
@@ -277,6 +277,7 @@ class _PlayerControlsState extends State<PlayerControls> {
               child: ExcludeFocus(
                 excluding: !visible,
                 child: AnimatedOpacity(
+                  key: const ValueKey('player-controls-overlay'),
                   opacity: visible ? 1 : 0,
                   duration: const Duration(milliseconds: 180),
                   child: Stack(
@@ -331,7 +332,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                 ),
               ),
             ),
-            _gestureFeedback(),
+            PlayerFeedbackOverlay(feedback: widget.interactions.feedback),
           ],
         ),
       ),
@@ -1024,138 +1025,4 @@ class _PlayerControlsState extends State<PlayerControls> {
       },
     );
   }
-
-  Widget _gestureFeedback() => AnimatedBuilder(
-    animation: widget.interactions,
-    builder: (context, _) {
-      final hud = widget.interactions.hudState;
-      final feedback = widget.interactions.feedback;
-      final target = widget.interactions.scrubTarget;
-      if (target != null) {
-        final duration = widget.player.state.duration.inMilliseconds;
-        return IgnorePointer(
-          child: Align(
-            alignment: const Alignment(0, -.55),
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '进度预览 ${formatPosition(target.inMilliseconds / 1000)} / ${formatPosition(duration / 1000)}',
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 180,
-                    child: LinearProgressIndicator(
-                      value: duration > 0
-                          ? (target.inMilliseconds / duration).clamp(0.0, 1.0)
-                          : 0,
-                      backgroundColor: Colors.white24,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-      if (hud.type == SwipeAction.brightness ||
-          hud.type == SwipeAction.volume) {
-        final brightness = hud.type == SwipeAction.brightness;
-        final value = hud.value.clamp(0.0, 1.0);
-        final percent = (value * 100).round();
-        final icon = !brightness
-            ? value == 0
-                  ? Icons.volume_off_rounded
-                  : value < .5
-                  ? Icons.volume_down_rounded
-                  : Icons.volume_up_rounded
-            : value < 0.33
-            ? Icons.brightness_low_rounded
-            : value < 0.66
-            ? Icons.brightness_medium_rounded
-            : Icons.brightness_high_rounded;
-        return IgnorePointer(
-          child: Center(
-            child: Container(
-              width: 120,
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .75),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: .15),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .4),
-                    blurRadius: 18,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: Colors.white, size: 36),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: 70,
-                    height: 6,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: value,
-                        backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${brightness ? '亮度' : '音量'} $percent%',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-      if (feedback.isEmpty) return const SizedBox.shrink();
-      return IgnorePointer(
-        child: Align(
-          alignment: const Alignment(0, -.5),
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Text(
-              feedback,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ),
-      );
-    },
-  );
 }
