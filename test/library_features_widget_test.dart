@@ -7,6 +7,7 @@ import 'package:duanju_app/home_screen.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
 import 'package:duanju_app/saved_library.dart';
+import 'package:duanju_app/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -263,17 +264,11 @@ void main() {
       await tester.pumpAndSettle();
       final before = repository.requests.length;
       final refresh = find.byKey(const ValueKey('catalog-refresh'));
-      await tester.tap(find.byTooltip('更多'));
-      await tester.pumpAndSettle();
       await tester.tap(refresh);
       await tester.pump();
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      await tester.tap(find.byTooltip('更多'));
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isFalse);
+      expect(tester.widget<RefreshAction>(refresh).loading, isTrue);
       await tester.tap(refresh);
-      Navigator.of(tester.element(refresh)).pop();
-      await tester.pump(const Duration(milliseconds: 250));
       expect(repository.starts, ['hongguo:update']);
       repository.cachedPages['hongguo'] = CatalogPage(
         [
@@ -297,11 +292,7 @@ void main() {
       expect(repository.requests.length, before);
       expect(find.text('新发现的合成剧'), findsOneWidget);
       expect(store.following(first.id)!.newEpisodes, 3);
-      await tester.tap(find.byTooltip('更多'));
-      await tester.pumpAndSettle();
-      expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isTrue);
-      Navigator.of(tester.element(refresh)).pop();
-      await tester.pumpAndSettle();
+      expect(tester.widget<RefreshAction>(refresh).loading, isFalse);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

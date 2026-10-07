@@ -4,12 +4,41 @@ import 'package:flutter/services.dart';
 abstract final class AppTheme {
   static final light = _theme(Brightness.light);
   static final dark = _theme(Brightness.dark);
+  static final playbackLight = _playbackTheme(light);
+  static final playbackDark = _playbackTheme(dark);
 
   static ThemeMode mode(String preference) => switch (preference) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,
     _ => ThemeMode.system,
   };
+
+  static ThemeData playback(Brightness brightness) =>
+      brightness == Brightness.dark ? playbackDark : playbackLight;
+
+  static ThemeData _playbackTheme(ThemeData theme) => ThemeData(
+    useMaterial3: true,
+    brightness: theme.brightness,
+    colorScheme: theme.colorScheme,
+    scaffoldBackgroundColor: theme.scaffoldBackgroundColor,
+    appBarTheme: AppBarTheme(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      foregroundColor: theme.colorScheme.onSurface,
+      scrolledUnderElevation: 0,
+      elevation: 0,
+      centerTitle: false,
+      systemOverlayStyle: systemBars(theme.brightness),
+    ),
+    dividerTheme: DividerThemeData(color: theme.colorScheme.outlineVariant),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: theme.colorScheme.surfaceContainer,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+    ),
+  );
 
   static String label(String preference) => switch (preference) {
     'light' => '浅色',

@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'lan_controller.dart';
 import 'player_feedback.dart';
 import 'player_interactions.dart';
+import 'player_rotation_icon.dart';
 import 'widgets.dart';
 import 'video_enhancement.dart';
 
@@ -83,6 +84,14 @@ class _PlayerControlsState extends State<PlayerControls> {
   bool _lastPlaying = false;
   double _doubleTapX = 0;
 
+  bool get _controlsVisible {
+    final state = widget.player.state;
+    return widget.panelOpen ||
+        (!widget.interactions.operating &&
+            !widget.interactions.feedback.visible &&
+            (_visible || !state.playing || state.buffering));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -93,6 +102,14 @@ class _PlayerControlsState extends State<PlayerControls> {
       widget.player.stream.position,
       widget.player.stream.duration,
       widget.player.stream.buffer,
+    ]) {
+      _subscriptions.add(
+        stream.listen((_) {
+          if (mounted && _controlsVisible) setState(() {});
+        }),
+      );
+    }
+    for (final stream in [
       widget.player.stream.playing,
       widget.player.stream.buffering,
       widget.player.stream.volume,
@@ -224,11 +241,7 @@ class _PlayerControlsState extends State<PlayerControls> {
     final duration = state.duration.inMilliseconds / 1000;
     final position = state.position.inMilliseconds / 1000;
     final buffered = state.buffer.inMilliseconds / 1000;
-    final visible =
-        widget.panelOpen ||
-        (!widget.interactions.operating &&
-            !widget.interactions.feedback.visible &&
-            (_visible || !state.playing || state.buffering));
+    final visible = _controlsVisible;
     return MouseRegion(
       onHover: (_) => _show(),
       cursor: visible ? SystemMouseCursors.basic : SystemMouseCursors.none,
@@ -367,10 +380,26 @@ class _PlayerControlsState extends State<PlayerControls> {
             else
               const Spacer(),
             if (compact)
-              _overlayIconButton(
-                tooltip: '旋转与全屏',
-                onPressed: widget.onFullscreen,
-                icon: Icons.screen_rotation_alt_rounded,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xE61F1F1F),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF353535)),
+                  ),
+                  child: IconButton(
+                    key: const ValueKey('player-rotate'),
+                    tooltip: '旋转与全屏',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 42,
+                      height: 42,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: widget.onFullscreen,
+                    icon: const PlayerRotationIcon(),
+                  ),
+                ),
               ),
           ],
         ),

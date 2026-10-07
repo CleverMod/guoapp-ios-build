@@ -62,50 +62,26 @@ void main() {
       await binding.convertFlutterSurfaceToImage();
       await capture('interface-system-catalog');
 
-      final compactActions =
-          MediaQuery.sizeOf(tester.element(find.byType(HomeScreen))).width <
-          600;
       final refresh = find.byKey(const ValueKey('catalog-refresh'));
-      if (compactActions) {
-        await tester.tap(find.byTooltip('更多'));
-        await tester.pumpAndSettle();
-      }
       final pending = Completer<CatalogPage>();
       repository.pendingCatalog = pending;
       await tester.tap(refresh);
       await tester.pump();
-      if (compactActions) {
-        expect(find.byType(LinearProgressIndicator), findsOneWidget);
-        await tester.tap(find.byTooltip('更多'));
-        await tester.pump(const Duration(milliseconds: 250));
-        expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isFalse);
-        Navigator.of(tester.element(refresh)).pop();
-        await tester.pump(const Duration(milliseconds: 250));
-      } else {
-        final rotation = find.descendant(
-          of: refresh,
-          matching: find.byType(RotationTransition),
-        );
-        final angle = tester.widget<RotationTransition>(rotation).turns.value;
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(
-          tester.widget<RotationTransition>(rotation).turns.value,
-          isNot(angle),
-        );
-      }
+      final rotation = find.descendant(
+        of: refresh,
+        matching: find.byType(RotationTransition),
+      );
+      final angle = tester.widget<RotationTransition>(rotation).turns.value;
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        tester.widget<RotationTransition>(rotation).turns.value,
+        isNot(angle),
+      );
       await capture('interface-refreshing');
       repository.pendingCatalog = null;
       pending.complete(CatalogPage(repository.dramas('hongguo')));
       await tester.pumpAndSettle();
-      if (compactActions) {
-        await tester.tap(find.byTooltip('更多'));
-        await tester.pumpAndSettle();
-        expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isTrue);
-        Navigator.of(tester.element(refresh)).pop();
-        await tester.pumpAndSettle();
-      } else {
-        expect(find.byTooltip('更新剧库'), findsOneWidget);
-      }
+      expect(find.byTooltip('更新剧库'), findsOneWidget);
 
       if (allSourcesEnabled) {
         await source('黄豆');

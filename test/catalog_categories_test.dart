@@ -147,6 +147,12 @@ void main() {
       final switcher = find.byKey(const ValueKey('source-switch'));
       final rankings = find.byKey(const ValueKey('open-rankings'));
       final search = find.byKey(const ValueKey('toggle-search'));
+      final refresh = find.byKey(const ValueKey('catalog-refresh'));
+      expect(refresh, findsOneWidget);
+      expect(
+        find.descendant(of: switcher, matching: find.text('发现')),
+        findsNothing,
+      );
       expect(rankings, findsNothing);
       expect(
         tester.getCenter(switcher).dy,

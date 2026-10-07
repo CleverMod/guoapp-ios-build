@@ -23,7 +23,6 @@ class AppBottomNavigation extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
         child: AppSurface(
           radius: 28,
-          blur: true,
           elevated: true,
           padding: const EdgeInsets.all(6),
           child: Row(

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,6 +26,7 @@ import 'playback_preloader.dart';
 import 'playback_recovery.dart';
 import 'playback_preferences.dart';
 import 'player_controls.dart';
+import 'player_rotation_icon.dart';
 import 'player_interactions.dart';
 import 'player_menu.dart';
 import 'television_controls.dart';
@@ -1583,7 +1583,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   @override
   Widget build(BuildContext context) {
     final inherited = Theme.of(context);
-    final theme = _television ? televisionTheme(inherited) : inherited;
+    final playbackTheme = AppTheme.playback(inherited.brightness);
+    final theme = _television ? televisionTheme(playbackTheme) : playbackTheme;
     return Theme(
       data: theme,
       child: Builder(
@@ -1648,7 +1649,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                       IconButton(
                         tooltip: '旋转与全屏',
                         onPressed: _rotate,
-                        icon: const Icon(Icons.screen_rotation_alt_rounded),
+                        icon: const PlayerRotationIcon(),
                       ),
                     ],
                   ),
@@ -1719,8 +1720,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Widget _videoPane(BuildContext context) {
     final videoTheme = _television
-        ? televisionTheme(AppTheme.dark)
-        : AppTheme.dark;
+        ? televisionTheme(AppTheme.playbackDark)
+        : AppTheme.playbackDark;
     final title =
         '${widget.detail.drama.title} · 第 ${widget.detail.episodes[_index].number} 集${_plan?.local == true ? ' · 本地' : ''}${widget.detail.episodes[_index].vip ? ' · VIP 试看' : ''}${(_plan?.routeIndex ?? 0) > 0 ? ' · 线路 ${_plan!.routeIndex + 1}' : ''}';
     final hideOverlayForPictureInPicture = _pictureInPictureVisible;
@@ -1785,8 +1786,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       fit: StackFit.expand,
       children: [
         if (!hideOverlayForPictureInPicture)
-          DanmakuOverlay(controller: _danmaku, aspectRatio: _aspectRatio),
-        controls,
+          RepaintBoundary(
+            child: DanmakuOverlay(
+              controller: _danmaku,
+              aspectRatio: _aspectRatio,
+            ),
+          ),
+        RepaintBoundary(child: controls),
       ],
     );
     return Theme(
@@ -1803,131 +1809,133 @@ class _PlayerScreenState extends State<PlayerScreen>
               _enhancement.setViewport(pixels, television: _television);
             }
           });
-          return Stack(
-            key: _videoPaneKey,
-            fit: StackFit.expand,
-            children: [
-              if (widget.videoBuilder != null)
-                widget.videoBuilder!(layeredControls)
-              else if (_player is LunaExoPlayer)
-                LunaExoVideoView(
-                  player: _player as LunaExoPlayer,
-                  fit: BoxFit.contain,
-                  controls: (_) => layeredControls,
-                )
-              else
-                Video(
-                  controller: _video!,
-                  fit: BoxFit.contain,
-                  controls: (_) => layeredControls,
-                ),
-              if (_loading && !hideOverlayForPictureInPicture)
-                ColoredBox(
-                  color: Colors.black.withValues(alpha: .78),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
-                        Text(_loadingMessage),
-                      ],
+          return RepaintBoundary(
+            child: Stack(
+              key: _videoPaneKey,
+              fit: StackFit.expand,
+              children: [
+                if (widget.videoBuilder != null)
+                  widget.videoBuilder!(layeredControls)
+                else if (_player is LunaExoPlayer)
+                  LunaExoVideoView(
+                    player: _player,
+                    fit: BoxFit.contain,
+                    controls: (_) => layeredControls,
+                  )
+                else
+                  Video(
+                    controller: _video!,
+                    fit: BoxFit.contain,
+                    controls: (_) => layeredControls,
+                  ),
+                if (_loading && !hideOverlayForPictureInPicture)
+                  ColoredBox(
+                    color: Colors.black.withValues(alpha: .78),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(_loadingMessage),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              if (_error != null && !hideOverlayForPictureInPicture)
-                ColoredBox(
-                  color: Colors.black.withValues(alpha: .9),
-                  child: StatusPanel(
-                    title: '暂时无法播放',
-                    message: _error!,
-                    onRetry: () => _retry(),
-                    action: _localFailure ? '重试本地播放' : '重试播放',
-                    secondaryAction: Wrap(
-                      spacing: 12,
-                      runSpacing: 10,
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: () =>
-                              DiaryService.showDiaryDialog(context),
-                          icon: const Icon(Icons.receipt_long_rounded),
-                          label: const Text('查看播放日记'),
-                        ),
-                        if (_localFailure && widget.allowOnlineFallback)
-                          TextButton.icon(
-                            onPressed: _switchOnline,
-                            icon: const Icon(Icons.cloud_outlined),
-                            label: const Text('改为在线播放'),
-                          )
-                        else if (!_localFailure &&
-                            !widget.localOnly &&
-                            widget.repository.supportsSourceManagement)
-                          SourceDiagnosticsButton(
-                            repository: widget.repository,
-                            store: widget.store,
-                            drama: widget.detail.drama,
+                if (_error != null && !hideOverlayForPictureInPicture)
+                  ColoredBox(
+                    color: Colors.black.withValues(alpha: .9),
+                    child: StatusPanel(
+                      title: '暂时无法播放',
+                      message: _error!,
+                      onRetry: () => _retry(),
+                      action: _localFailure ? '重试本地播放' : '重试播放',
+                      secondaryAction: Wrap(
+                        spacing: 12,
+                        runSpacing: 10,
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: () =>
+                                DiaryService.showDiaryDialog(context),
+                            icon: const Icon(Icons.receipt_long_rounded),
+                            label: const Text('查看播放日记'),
                           ),
-                      ],
-                    ),
-                    icon: Icons.play_disabled_rounded,
-                  ),
-                ),
-              if ((_loading || _error != null) &&
-                  !hideOverlayForPictureInPicture &&
-                  _showFullscreen &&
-                  !_television)
-                SafeArea(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          tooltip: '退出全屏',
-                          onPressed: _rotate,
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () =>
-                              _openPanel(PlayerMenuSection.episodes),
-                          child: const Text('选集'),
-                        ),
-                      ],
+                          if (_localFailure && widget.allowOnlineFallback)
+                            TextButton.icon(
+                              onPressed: _switchOnline,
+                              icon: const Icon(Icons.cloud_outlined),
+                              label: const Text('改为在线播放'),
+                            )
+                          else if (!_localFailure &&
+                              !widget.localOnly &&
+                              widget.repository.supportsSourceManagement)
+                            SourceDiagnosticsButton(
+                              repository: widget.repository,
+                              store: widget.store,
+                              drama: widget.detail.drama,
+                            ),
+                        ],
+                      ),
+                      icon: Icons.play_disabled_rounded,
                     ),
                   ),
-                ),
-              if (_saveWarning != null && !hideOverlayForPictureInPicture)
-                Positioned(
-                  top: 52,
-                  left: 12,
-                  right: 12,
-                  child: SafeArea(
-                    bottom: false,
-                    child: Material(
-                      color: const Color(0xE6322424),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              _saveWarning!,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            TextButton(
-                              onPressed: _saveProgress,
-                              child: const Text('重试保存'),
-                            ),
-                          ],
+                if ((_loading || _error != null) &&
+                    !hideOverlayForPictureInPicture &&
+                    _showFullscreen &&
+                    !_television)
+                  SafeArea(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: '退出全屏',
+                            onPressed: _rotate,
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () =>
+                                _openPanel(PlayerMenuSection.episodes),
+                            child: const Text('选集'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_saveWarning != null && !hideOverlayForPictureInPicture)
+                  Positioned(
+                    top: 52,
+                    left: 12,
+                    right: 12,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Material(
+                        color: const Color(0xE6322424),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                _saveWarning!,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              TextButton(
+                                onPressed: _saveProgress,
+                                child: const Text('重试保存'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           );
         },
       ),

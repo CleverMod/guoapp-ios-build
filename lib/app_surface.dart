@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 class AppSurface extends StatelessWidget {
@@ -8,7 +6,6 @@ class AppSurface extends StatelessWidget {
     required this.child,
     this.padding = EdgeInsets.zero,
     this.radius = 22,
-    this.blur = false,
     this.elevated = false,
     this.gradient,
   });
@@ -16,7 +13,6 @@ class AppSurface extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double radius;
-  final bool blur;
   final bool elevated;
   final Gradient? gradient;
 
@@ -29,9 +25,7 @@ class AppSurface extends StatelessWidget {
     final borderRadius = BorderRadius.circular(radius);
     final content = DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLow.withValues(
-          alpha: blur && !highContrast ? .9 : 1,
-        ),
+        color: colors.surfaceContainerLow,
         gradient: gradient,
         borderRadius: borderRadius,
         border: Border.all(
@@ -59,15 +53,7 @@ class AppSurface extends StatelessWidget {
               ]
             : null,
       ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: blur && !highContrast
-            ? BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: content,
-              )
-            : content,
-      ),
+      child: ClipRRect(borderRadius: borderRadius, child: content),
     );
   }
 }

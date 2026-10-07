@@ -16,6 +16,26 @@ import 'package:media_kit/media_kit.dart';
 import 'player_fixtures.dart';
 
 class FeedbackPlayer extends ScriptedPlayer {
+  void advance({
+    required Duration position,
+    required Duration duration,
+    required Duration buffer,
+  }) {
+    state = state.copyWith(
+      position: position,
+      duration: duration,
+      buffer: buffer,
+    );
+    positionController.add(position);
+    durationController.add(duration);
+    bufferController.add(buffer);
+  }
+
+  void setBuffering(bool buffering) {
+    state = state.copyWith(buffering: buffering);
+    bufferingController.add(buffering);
+  }
+
   @override
   Future<void> play() async {
     state = state.copyWith(playing: true);
@@ -72,6 +92,8 @@ void main() {
     WidgetTester tester, {
     Size size = const Size(844, 390),
     bool mobile = true,
+    bool fullscreen = true,
+    VoidCallback? onFullscreen,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -86,7 +108,7 @@ void main() {
       available: () => true,
       baseSpeed: () => 1.5,
       onTogglePlayback: () => player.playOrPause(),
-      onFullscreen: () {},
+      onFullscreen: onFullscreen ?? () {},
       onEpisode: (_) => '',
     );
     final fontPath = Platform.environment['PLAYER_FEEDBACK_FONT'];
@@ -133,9 +155,9 @@ void main() {
                     player: player,
                     interactions: interactions,
                     enabled: true,
-                    fullscreen: true,
+                    fullscreen: fullscreen,
                     showOnPlaybackReady: true,
-                    onFullscreen: () {},
+                    onFullscreen: onFullscreen ?? () {},
                     onBack: () {},
                     onPrevious: null,
                     onNext: null,
@@ -166,6 +188,72 @@ void main() {
         find.byKey(const ValueKey('player-controls-overlay')),
       )
       .opacity;
+
+  testWidgets('portrait rotation control keeps the fullscreen action', (
+    tester,
+  ) async {
+    var rotations = 0;
+    await mount(
+      tester,
+      size: const Size(430, 475),
+      fullscreen: false,
+      onFullscreen: () => rotations++,
+    );
+    await capture(tester, 'rotation-control');
+    await tester.tap(find.byKey(const ValueKey('player-rotate')));
+    await tester.pump();
+    expect(rotations, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'hidden controls do not schedule frames for progress and show current state on return',
+    (tester) async {
+      final (player, _) = await mount(tester);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(controlsOpacity(tester), 0);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      player.advance(
+        position: const Duration(seconds: 45),
+        duration: const Duration(seconds: 150),
+        buffer: const Duration(seconds: 90),
+      );
+      await tester.idle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.tapAt(const Offset(420, 120));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(controlsOpacity(tester), 1);
+      final progress = tester.widget<Slider>(
+        find.byKey(const ValueKey('player-progress')),
+      );
+      expect(progress.value, 45);
+      expect(progress.max, 150);
+      expect(progress.secondaryTrackValue, 90);
+    },
+  );
+
+  testWidgets('hidden controls still show buffering and pause changes', (
+    tester,
+  ) async {
+    final (player, _) = await mount(tester);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(controlsOpacity(tester), 0);
+    player.setBuffering(true);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 180));
+    expect(controlsOpacity(tester), 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    player.setBuffering(false);
+    await tester.pumpAndSettle();
+    expect(controlsOpacity(tester), 0);
+    await player.pause();
+    await tester.pumpAndSettle();
+    expect(controlsOpacity(tester), 1);
+    expect(find.byTooltip('开始播放'), findsOneWidget);
+  });
 
   testWidgets(
     'updates do not extend feedback and a new operation restarts it',

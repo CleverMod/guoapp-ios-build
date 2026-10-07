@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -800,9 +801,12 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final television = AppLayout.isTelevision(context);
         final desktop = constraints.maxWidth >= 840;
-        final compactActions = !television && constraints.maxWidth < 600;
+        final compactActions =
+            !television &&
+            (constraints.maxWidth < 600 ||
+                defaultTargetPlatform == TargetPlatform.iOS ||
+                defaultTargetPlatform == TargetPlatform.android);
         final theme = Theme.of(context);
-        final colors = theme.colorScheme;
         final textScaler = MediaQuery.textScalerOf(context);
         final catalogBusy =
             _loading ||
@@ -812,8 +816,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final toolbarHeight = television
             ? 64.0
             : _currentTab == 0 && !_selectionMode
-            ? (textScaler.scale(27) * 1.2 + textScaler.scale(12) * 1.4 + 12)
-                  .clamp(76.0, double.infinity)
+            ? (textScaler.scale(27) * 1.2 + 16).clamp(64.0, double.infinity)
             : null;
         final navigation = [
           (
@@ -890,66 +893,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                     child: SizedBox(
                       height: toolbarHeight,
-                      child: television
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    _group.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                if (_sourceGroups.length > 1)
-                                  const Icon(Icons.expand_more_rounded),
-                              ],
-                            )
-                          : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '发现',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.headlineSmall,
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.layers_outlined,
-                                      size: 13,
-                                      color: colors.onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Flexible(
-                                      child: Text(
-                                        _group.name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: colors.onSurfaceVariant,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
-                                    ),
-                                    if (_sourceGroups.length > 1) ...[
-                                      const SizedBox(width: 2),
-                                      Icon(
-                                        Icons.expand_more_rounded,
-                                        size: 18,
-                                        color: colors.onSurfaceVariant,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _group.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: television
+                                  ? const TextStyle(fontWeight: FontWeight.w800)
+                                  : theme.textTheme.headlineSmall,
                             ),
+                          ),
+                          if (_sourceGroups.length > 1)
+                            const Icon(Icons.expand_more_rounded),
+                        ],
+                      ),
                     ),
                   )
                 : Text(tab == 4 ? '直播' : appName),
@@ -1017,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: _toggleSearch,
                   ),
                 ],
-                if (tab == 0 && !_showRecommendations && !compactActions)
+                if (tab == 0 && !_showRecommendations)
                   RefreshAction(
                     key: const ValueKey('catalog-refresh'),
                     loading: catalogBusy,
@@ -1035,8 +995,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       _openRankings();
                     } else if (value == 'selection') {
                       setState(() => _selectionMode = true);
-                    } else if (value == 'update') {
-                      _refreshCatalog();
                     } else if (value == 'sources') {
                       _manageSources();
                     } else if (value == 'settings') {
@@ -1099,14 +1057,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: _menuLabel(Icons.checklist_rounded, '多选下载'),
                         ),
                     ],
-                    if (tab == 0 && !_showRecommendations && compactActions)
-                      PopupMenuItem(
-                        key: const ValueKey('catalog-refresh'),
-                        value: 'update',
-                        enabled:
-                            widget.store.sources.isNotEmpty && !catalogBusy,
-                        child: _menuLabel(Icons.refresh_rounded, '更新剧库'),
-                      ),
                     if (tab == 0 && compactActions) const PopupMenuDivider(),
                     if (widget.repository.supportsSourceManagement)
                       PopupMenuItem(
