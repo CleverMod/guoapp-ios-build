@@ -92,7 +92,7 @@ class DramaCover extends StatelessWidget {
     super.key,
     required this.drama,
     required this.repository,
-    this.radius = 14,
+    this.radius = 16,
   });
   final Drama drama;
   final AppRepository repository;
@@ -349,7 +349,7 @@ class DramaTile extends StatelessWidget {
   static double titleHeight(BuildContext context) =>
       MediaQuery.textScalerOf(
         context,
-      ).scale(AppLayout.isTelevision(context) ? 17 : 14) *
+      ).scale(AppLayout.isTelevision(context) ? 17 : 14.5) *
       2.6;
 
   static double subtitleHeight(BuildContext context) =>
@@ -365,63 +365,88 @@ class DramaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final television = AppLayout.isTelevision(context);
+    final colors = Theme.of(context).colorScheme;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AspectRatio(
           aspectRatio: 2 / 3,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              DramaCover(drama: drama, repository: repository),
-              if (badge != null && badge!.isNotEmpty)
-                Positioned(
-                  left: 6,
-                  right: 6,
-                  bottom: 6,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: .72),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 4,
-                      ),
-                      child: Text(
-                        badge!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.dark
+                        ? .16
+                        : .07,
+                  ),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DramaCover(drama: drama, repository: repository, radius: 0),
+                  if (badge != null && badge!.isNotEmpty)
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: drama.episodes > 0 ? 32 : 8,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .56),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .14),
+                            width: .5,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            badge!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              if (actions != null && selected == null)
-                Positioned(top: 2, right: 2, child: actions!),
-              if (selected != null)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: selected!
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.black.withValues(alpha: .64),
-                    child: Icon(
-                      selected! ? Icons.check_rounded : Icons.circle_outlined,
-                      size: 22,
-                      color: selected!
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : Colors.white,
+                  if (actions != null && selected == null)
+                    Positioned(top: 2, right: 2, child: actions!),
+                  if (selected != null)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: selected!
+                            ? colors.primary
+                            : Colors.black.withValues(alpha: .64),
+                        child: Icon(
+                          selected!
+                              ? Icons.check_rounded
+                              : Icons.circle_outlined,
+                          size: 22,
+                          color: selected! ? colors.onPrimary : Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 9),
@@ -434,9 +459,9 @@ class DramaTile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 height: 1.3,
-                fontSize: television ? 17 : 14,
+                fontSize: television ? 17 : 14.5,
               ),
             ),
           ),
@@ -453,7 +478,7 @@ class DramaTile extends StatelessWidget {
               style: TextStyle(
                 fontSize: television ? 14 : 12,
                 height: 1.3,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                color: colors.onSurfaceVariant,
               ),
             ),
           ),
@@ -484,7 +509,7 @@ class DramaTile extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress ?? onMore,
         onSecondaryTap: onMore,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: content,
       ),
     );
@@ -551,7 +576,10 @@ class StatusPanel extends StatelessWidget {
 }
 
 SliverGridDelegate dramaGridDelegate(BuildContext context, double width) {
-  final columns = width < 600 ? 3 : (width / 180).floor().clamp(4, 9);
+  final largeText = MediaQuery.textScalerOf(context).scale(14.5) >= 20;
+  final columns = width < 600
+      ? (width < 310 || largeText ? 2 : 3)
+      : (width / 180).floor().clamp(4, 9);
   final spacing = width < 600 ? 10.0 : 18.0;
   final tileWidth = (width - (columns - 1) * spacing) / columns;
   return SliverGridDelegateWithFixedCrossAxisCount(

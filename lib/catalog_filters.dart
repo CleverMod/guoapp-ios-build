@@ -51,23 +51,24 @@ class _CatalogFiltersState extends State<CatalogFilters> {
   @override
   Widget build(BuildContext context) {
     final television = AppLayout.isTelevision(context);
+    final colors = Theme.of(context).colorScheme;
     return SizedBox(
       height: television
           ? 64
-          : max(52, MediaQuery.textScalerOf(context).scale(14) + 28),
+          : max(58, MediaQuery.textScalerOf(context).scale(14) + 32),
       child: Row(
         children: [
           Expanded(
             child: SingleChildScrollView(
               key: const ValueKey('catalog-categories'),
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
                   for (final entry in widget.categories)
                     Padding(
                       key: _anchors.putIfAbsent(entry.id, GlobalKey.new),
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 8),
                       child: television
                           ? RemoteButton(
                               key: ValueKey('category-${entry.id}'),
@@ -80,6 +81,19 @@ class _CatalogFiltersState extends State<CatalogFilters> {
                               label: Text(entry.name),
                               selected: entry.id == widget.category,
                               showCheckmark: false,
+                              backgroundColor: Colors.transparent,
+                              selectedColor: colors.primary.withValues(
+                                alpha: .12,
+                              ),
+                              labelStyle: TextStyle(
+                                color: entry.id == widget.category
+                                    ? colors.primary
+                                    : colors.onSurfaceVariant,
+                                fontSize: 14,
+                                fontWeight: entry.id == widget.category
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
                               onSelected: (_) => widget.onCategory(entry.id),
                             ),
                     ),

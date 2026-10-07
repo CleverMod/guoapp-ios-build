@@ -142,13 +142,21 @@ void main() {
       );
       expect(find.byType(TextField), findsNothing);
       final coverTop = tester.getTopLeft(find.byType(DramaCover).first).dy;
-      expect(coverTop, lessThan(150));
+      final toolbarBottom = tester.getBottomLeft(find.byType(AppBar)).dy;
+      expect(coverTop - toolbarBottom, lessThan(90));
       final switcher = find.byKey(const ValueKey('source-switch'));
       final rankings = find.byKey(const ValueKey('open-rankings'));
+      final search = find.byKey(const ValueKey('toggle-search'));
+      expect(rankings, findsNothing);
       expect(
         tester.getCenter(switcher).dy,
-        closeTo(tester.getCenter(rankings).dy, 2),
+        closeTo(tester.getCenter(search).dy, 2),
       );
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      expect(rankings, findsOneWidget);
+      Navigator.of(tester.element(rankings)).pop();
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('toggle-search')));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsOneWidget);
@@ -269,6 +277,8 @@ void main() {
     (tester) async {
       final repository = CategoryRepository();
       await mount(tester, repository);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('open-rankings')));
       await tester.pumpAndSettle();
       expect(repository.rankRequests, ['hongguo-hot|1|false']);

@@ -54,35 +54,58 @@ void main() {
       );
       final covers = find.byType(DramaCover);
       final firstCover = tester.getRect(covers.first);
-      for (var index = 1; index < 3; index++) {
-        expect(
-          tester.getRect(covers.at(index)).bottom,
-          closeTo(firstCover.bottom, .01),
-        );
+      for (var index = 1; index < covers.evaluate().length; index++) {
+        final cover = tester.getRect(covers.at(index));
+        if (cover.top >= firstCover.bottom) break;
+        expect(cover.bottom, closeTo(firstCover.bottom, .01));
       }
       await binding.convertFlutterSurfaceToImage();
       await capture('interface-system-catalog');
 
+      final compactActions =
+          MediaQuery.sizeOf(tester.element(find.byType(HomeScreen))).width <
+          600;
+      final refresh = find.byKey(const ValueKey('catalog-refresh'));
+      if (compactActions) {
+        await tester.tap(find.byTooltip('更多'));
+        await tester.pumpAndSettle();
+      }
       final pending = Completer<CatalogPage>();
       repository.pendingCatalog = pending;
-      final refresh = find.byKey(const ValueKey('catalog-refresh'));
       await tester.tap(refresh);
       await tester.pump();
-      final rotation = find.descendant(
-        of: refresh,
-        matching: find.byType(RotationTransition),
-      );
-      final angle = tester.widget<RotationTransition>(rotation).turns.value;
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(
-        tester.widget<RotationTransition>(rotation).turns.value,
-        isNot(angle),
-      );
+      if (compactActions) {
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        await tester.tap(find.byTooltip('更多'));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isFalse);
+        Navigator.of(tester.element(refresh)).pop();
+        await tester.pump(const Duration(milliseconds: 250));
+      } else {
+        final rotation = find.descendant(
+          of: refresh,
+          matching: find.byType(RotationTransition),
+        );
+        final angle = tester.widget<RotationTransition>(rotation).turns.value;
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(
+          tester.widget<RotationTransition>(rotation).turns.value,
+          isNot(angle),
+        );
+      }
       await capture('interface-refreshing');
       repository.pendingCatalog = null;
       pending.complete(CatalogPage(repository.dramas('hongguo')));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('更新当前站源'), findsOneWidget);
+      if (compactActions) {
+        await tester.tap(find.byTooltip('更多'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<PopupMenuItem<String>>(refresh).enabled, isTrue);
+        Navigator.of(tester.element(refresh)).pop();
+        await tester.pumpAndSettle();
+      } else {
+        expect(find.byTooltip('更新剧库'), findsOneWidget);
+      }
 
       if (allSourcesEnabled) {
         await source('黄豆');
@@ -101,7 +124,7 @@ void main() {
       await store.setThemeMode('dark');
       await tester.pumpAndSettle();
       await capture('interface-dark-catalog');
-      await tester.tap(find.byKey(const ValueKey('bottom-nav-3')));
+      await tester.tap(find.text('下载'));
       await tester.pumpAndSettle();
       await capture('interface-dark-downloads');
       await store.setThemeMode('light');

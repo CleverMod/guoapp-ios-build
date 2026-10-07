@@ -800,6 +800,21 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final television = AppLayout.isTelevision(context);
         final desktop = constraints.maxWidth >= 840;
+        final compactActions = !television && constraints.maxWidth < 600;
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final catalogBusy =
+            _loading ||
+            _loadingMore ||
+            _categoriesLoading ||
+            _group.sources.any((source) => _updater.busy(source.id));
+        final toolbarHeight = television
+            ? 64.0
+            : _currentTab == 0 && !_selectionMode
+            ? (textScaler.scale(27) * 1.2 + textScaler.scale(12) * 1.4 + 12)
+                  .clamp(76.0, double.infinity)
+            : null;
         final navigation = [
           (
             tab: 0,
@@ -846,8 +861,8 @@ class _HomeScreenState extends State<HomeScreen> {
         void selectDestination(int index) => _changeTab(navigation[index].tab);
         final scaffold = Scaffold(
           appBar: AppBar(
-            toolbarHeight: television ? 64 : null,
-            titleSpacing: 12,
+            toolbarHeight: toolbarHeight,
+            titleSpacing: 20,
             title: _selectionMode
                 ? const Text(
                     '选择短剧',
@@ -874,23 +889,67 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                     ],
                     child: SizedBox(
-                      height: 48,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              _group.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
+                      height: toolbarHeight,
+                      child: television
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _group.name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (_sourceGroups.length > 1)
+                                  const Icon(Icons.expand_more_rounded),
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '发现',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.headlineSmall,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.layers_outlined,
+                                      size: 13,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Flexible(
+                                      child: Text(
+                                        _group.name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: colors.onSurfaceVariant,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ),
+                                    if (_sourceGroups.length > 1) ...[
+                                      const SizedBox(width: 2),
+                                      Icon(
+                                        Icons.expand_more_rounded,
+                                        size: 18,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
                             ),
-                          ),
-                          if (_sourceGroups.length > 1)
-                            const Icon(Icons.expand_more_rounded),
-                        ],
-                      ),
                     ),
                   )
                 : Text(tab == 4 ? '直播' : appName),
@@ -917,7 +976,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: const Icon(Icons.sync_rounded),
                   ),
                 if (tab == 0) ...[
-                  if (!_showRecommendations)
+                  if (!compactActions && !_showRecommendations)
                     IconButton(
                       tooltip: '排序与筛选 · ${widget.store.catalogView.sort.label}',
                       onPressed: _chooseCatalogView,
@@ -928,15 +987,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           : null,
                       icon: const Icon(Icons.sort_rounded),
                     ),
-                  IconButton(
-                    key: const ValueKey('open-rankings'),
-                    tooltip: '榜单',
-                    onPressed: widget.store.sources.isEmpty
-                        ? null
-                        : _openRankings,
-                    icon: const Icon(Icons.leaderboard_outlined),
-                  ),
-                  if (!_showRecommendations &&
+                  if (!compactActions)
+                    IconButton(
+                      key: const ValueKey('open-rankings'),
+                      tooltip: '榜单',
+                      onPressed: widget.store.sources.isEmpty
+                          ? null
+                          : _openRankings,
+                      icon: const Icon(Icons.leaderboard_outlined),
+                    ),
+                  if (!compactActions &&
+                      !_showRecommendations &&
                       widget.store.canDownload &&
                       widget.repository.supportsDownloads)
                     IconButton(
@@ -956,18 +1017,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: _toggleSearch,
                   ),
                 ],
-                if (tab == 0 &&
-                    !_showRecommendations &&
-                    constraints.maxWidth >= 400)
+                if (tab == 0 && !_showRecommendations && !compactActions)
                   RefreshAction(
                     key: const ValueKey('catalog-refresh'),
-                    loading:
-                        _loading ||
-                        _loadingMore ||
-                        _categoriesLoading ||
-                        _group.sources.any(
-                          (source) => _updater.busy(source.id),
-                        ),
+                    loading: catalogBusy,
                     tooltip: '更新剧库',
                     onPressed: widget.store.sources.isEmpty
                         ? null
@@ -976,7 +1029,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 PopupMenuButton<String>(
                   tooltip: '更多',
                   onSelected: (value) {
-                    if (value == 'update') {
+                    if (value == 'sort') {
+                      _chooseCatalogView();
+                    } else if (value == 'rankings') {
+                      _openRankings();
+                    } else if (value == 'selection') {
+                      setState(() => _selectionMode = true);
+                    } else if (value == 'update') {
                       _refreshCatalog();
                     } else if (value == 'sources') {
                       _manageSources();
@@ -1016,32 +1075,62 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                   },
                   itemBuilder: (_) => [
-                    if (tab == 0 &&
-                        !_showRecommendations &&
-                        constraints.maxWidth < 400)
+                    if (tab == 0 && compactActions) ...[
+                      if (!_showRecommendations)
+                        PopupMenuItem(
+                          value: 'sort',
+                          child: _menuLabel(
+                            Icons.sort_rounded,
+                            '排序与筛选 · ${widget.store.catalogView.sort.label}',
+                          ),
+                        ),
                       PopupMenuItem(
+                        key: const ValueKey('open-rankings'),
+                        value: 'rankings',
+                        enabled: widget.store.sources.isNotEmpty,
+                        child: _menuLabel(Icons.leaderboard_outlined, '榜单'),
+                      ),
+                      if (!_showRecommendations &&
+                          widget.store.canDownload &&
+                          widget.repository.supportsDownloads)
+                        PopupMenuItem(
+                          key: const ValueKey('select-catalog-dramas'),
+                          value: 'selection',
+                          child: _menuLabel(Icons.checklist_rounded, '多选下载'),
+                        ),
+                    ],
+                    if (tab == 0 && !_showRecommendations && compactActions)
+                      PopupMenuItem(
+                        key: const ValueKey('catalog-refresh'),
                         value: 'update',
                         enabled:
-                            widget.store.sources.isNotEmpty &&
-                            !_group.sources.any(
-                              (source) => _updater.busy(source.id),
-                            ),
-                        child: const Text('更新剧库'),
+                            widget.store.sources.isNotEmpty && !catalogBusy,
+                        child: _menuLabel(Icons.refresh_rounded, '更新剧库'),
                       ),
+                    if (tab == 0 && compactActions) const PopupMenuDivider(),
                     if (widget.repository.supportsSourceManagement)
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'sources',
-                        child: Text('站源管理'),
+                        child: _menuLabel(Icons.dns_outlined, '站源管理'),
                       ),
-                    const PopupMenuItem(value: 'users', child: Text('用户管理')),
-                    const PopupMenuItem(
-                      value: 'settings',
-                      child: Text('设置与备份'),
+                    PopupMenuItem(
+                      value: 'users',
+                      child: _menuLabel(Icons.people_outline_rounded, '用户管理'),
                     ),
-                    const PopupMenuItem(value: 'display', child: Text('界面模式')),
-                    const PopupMenuItem(
+                    PopupMenuItem(
+                      value: 'settings',
+                      child: _menuLabel(Icons.tune_rounded, '设置与备份'),
+                    ),
+                    PopupMenuItem(
+                      value: 'display',
+                      child: _menuLabel(Icons.devices_rounded, '界面模式'),
+                    ),
+                    PopupMenuItem(
                       value: 'about',
-                      child: Text('关于$appName'),
+                      child: _menuLabel(
+                        Icons.info_outline_rounded,
+                        '关于$appName',
+                      ),
                     ),
                   ],
                 ),
@@ -1175,6 +1264,14 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
+  Widget _menuLabel(IconData icon, String label) => Row(
+    children: [
+      Icon(icon, size: 20),
+      const SizedBox(width: 12),
+      Flexible(child: Text(label)),
+    ],
+  );
+
   Widget _catalog({required bool selectionInBody}) {
     final items = _visible;
     final television = AppLayout.isTelevision(context);
@@ -1267,7 +1364,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           )
         else ...[
-          if (_loading && _items.isNotEmpty)
+          if ((_loading ||
+                  _group.sources.any((source) => _updater.busy(source.id))) &&
+              _items.isNotEmpty)
             const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: GestureDetector(
@@ -1343,7 +1442,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         }
                         final padding = constraints.maxWidth < 600
-                            ? 16.0
+                            ? 20.0
                             : 24.0;
                         return RefreshIndicator(
                           onRefresh: _refreshCatalog,

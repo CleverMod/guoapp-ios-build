@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import 'app_layout.dart';
+import 'app_surface.dart';
 import 'core_bridge.dart';
 import 'download_picker.dart';
 import 'downloads_screen.dart';
@@ -497,7 +498,7 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
         ),
         bottomNavigationBar: Material(
-          color: Theme.of(context).colorScheme.surface,
+          color: Colors.transparent,
           child: SafeArea(
             top: false,
             child: Center(
@@ -505,47 +506,55 @@ class _DetailScreenState extends State<DetailScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1000),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                  child: Row(
-                    children: [
-                      if (widget.repository.supportsDownloads &&
-                          widget.store.canDownload) ...[
-                        IconButton.filledTonal(
-                          tooltip: '下载选集',
-                          onPressed: allowed && !_loading && episodes.isNotEmpty
-                              ? _download
-                              : null,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(52, 52),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: AppSurface(
+                    elevated: true,
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      children: [
+                        if (widget.repository.supportsDownloads &&
+                            widget.store.canDownload) ...[
+                          IconButton.filledTonal(
+                            tooltip: '下载选集',
+                            onPressed:
+                                allowed && !_loading && episodes.isNotEmpty
+                                ? _download
+                                : null,
+                            style: IconButton.styleFrom(
+                              minimumSize: const Size(52, 52),
+                            ),
+                            icon: const Icon(Icons.download_rounded),
                           ),
-                          icon: const Icon(Icons.download_rounded),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
-                      Expanded(
-                        child: FilledButton.icon(
-                          key: const ValueKey('start-play'),
-                          autofocus: television,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size(0, 52),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: FilledButton.icon(
+                            key: const ValueKey('start-play'),
+                            autofocus: television,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 52),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                            onPressed: !allowed || _loading || episodes.isEmpty
+                                ? null
+                                : () => _play(resumeIndex, resume: true),
+                            icon: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 26,
+                            ),
+                            label: Text(
+                              watched != null && episodes.isNotEmpty
+                                  ? '继续播放 · 第 ${episodes[resumeIndex].number} 集'
+                                  : '立即播放',
+                              textAlign: TextAlign.center,
                             ),
                           ),
-                          onPressed: !allowed || _loading || episodes.isEmpty
-                              ? null
-                              : () => _play(resumeIndex, resume: true),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 26),
-                          label: Text(
-                            watched != null && episodes.isNotEmpty
-                                ? '继续播放 · 第 ${episodes[resumeIndex].number} 集'
-                                : '立即播放',
-                            textAlign: TextAlign.center,
-                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -673,59 +682,8 @@ class _DetailScreenState extends State<DetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 92,
-              height: 138,
-              child: DramaCover(drama: drama, repository: widget.repository),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    drama.title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    meta.join(' · '),
-                    style: TextStyle(
-                      color: colors.onSurfaceVariant,
-                      height: 1.5,
-                    ),
-                  ),
-                  if (drama.category.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        drama.category,
-                        style: TextStyle(color: colors.onSurfaceVariant),
-                      ),
-                    ),
-                  if (drama.source == 'huangdou')
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        drama.vipStatus == null
-                            ? 'VIP 状态待补齐'
-                            : drama.vip
-                            ? 'VIP 内容'
-                            : '免费内容',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        _detailHeader(drama, meta),
+        const SizedBox(height: 18),
         _followingControls(drama),
         if (drama.onlineDate.isNotEmpty ||
             drama.heat.isNotEmpty ||
@@ -751,8 +709,8 @@ class _DetailScreenState extends State<DetailScreen> {
                 for (final tag in drama.tags.take(12))
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
+                      color: colors.surfaceContainer,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -769,7 +727,9 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
           ),
         if (drama.description.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 22),
+          Text('剧情简介', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
           Text(
             drama.description,
             maxLines: _expandedDescription ? null : 3,
@@ -796,6 +756,92 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _detailHeader(Drama drama, List<String> meta) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return AppSurface(
+      radius: 24,
+      padding: const EdgeInsets.all(20),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color.alphaBlend(
+            colors.primary.withValues(alpha: .08),
+            colors.surfaceContainerLow,
+          ),
+          colors.surfaceContainerLow,
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 280;
+          final poster = SizedBox(
+            width: 108,
+            height: 162,
+            child: DramaCover(
+              drama: drama,
+              repository: widget.repository,
+              radius: 16,
+            ),
+          );
+          final information = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(drama.title, style: theme.textTheme.titleLarge),
+              const SizedBox(height: 12),
+              Text(
+                meta.join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.6,
+                ),
+              ),
+              if (drama.category.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  drama.category,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (drama.source == 'huangdou') ...[
+                const SizedBox(height: 8),
+                Text(
+                  drama.vipStatus == null
+                      ? 'VIP 状态待补齐'
+                      : drama.vip
+                      ? 'VIP 内容'
+                      : '免费内容',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ],
+          );
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: poster),
+                const SizedBox(height: 20),
+                information,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              poster,
+              const SizedBox(width: 18),
+              Expanded(child: information),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -898,9 +944,11 @@ class _DetailScreenState extends State<DetailScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: state == null
-                  ? Theme.of(context).colorScheme.surfaceContainerHighest
-                  : Theme.of(context).colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(12),
+                  ? Theme.of(context).colorScheme.surfaceContainer
+                  : Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -912,6 +960,9 @@ class _DetailScreenState extends State<DetailScreen> {
                       ? Icons.bookmark_add_outlined
                       : Icons.bookmark_rounded,
                   size: 20,
+                  color: state == null
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(state?.label ?? '加入追剧'),

@@ -31,9 +31,9 @@ void main() {
   }
 
   testWidgets(
-    'refresh rotates during a request and stops after success or failure',
+    'wide layout refresh rotates during a request and stops after success or failure',
     (tester) async {
-      viewport(tester, const Size(390, 844));
+      viewport(tester, const Size(800, 844));
       final repository = InterfaceRepository();
       await tester.pumpWidget(
         DuanjuApp(repository: repository, store: await localStore()),
