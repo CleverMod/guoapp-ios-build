@@ -391,6 +391,8 @@ class _PlayerControlsState extends State<PlayerControls> {
                   child: IconButton(
                     key: const ValueKey('player-rotate'),
                     tooltip: '旋转与全屏',
+                    iconSize: 32,
+                    color: const Color(0xFFE4E4E4),
                     constraints: const BoxConstraints.tightFor(
                       width: 42,
                       height: 42,

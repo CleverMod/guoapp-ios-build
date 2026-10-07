@@ -93,9 +93,11 @@ jobs:
         env:
           PLAYER_FEEDBACK_SCREENSHOTS: dist/diagnostics/player-feedback
           PLAYER_FEEDBACK_FONT: /System/Library/Fonts/STHeiti Medium.ttc
+          HOME_UI_SCREENSHOTS: dist/diagnostics/player-feedback
         run: |
           dart analyze --fatal-infos lib/player_feedback.dart lib/player_interactions.dart lib/player_controls.dart lib/television_controls.dart lib/remote_widgets.dart test/player_feedback_test.dart test/television_player_test.dart
           flutter test test/player_feedback_test.dart test/television_player_test.dart --dart-define=DISABLE_REMOTE_IMAGES=true
+          flutter test test/catalog_categories_test.dart --plain-name 'compact home keeps search' --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
       - name: Upload player feedback UI previews
         if: always()
         uses: actions/upload-artifact@v4

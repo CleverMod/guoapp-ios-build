@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/catalog_browser.dart';
@@ -9,6 +11,8 @@ import 'package:duanju_app/models.dart';
 import 'package:duanju_app/ranking_models.dart';
 import 'package:duanju_app/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -109,6 +113,22 @@ class CategoryRepository extends FixtureRepository {
 }
 
 void main() {
+  Future<void> captureHome(WidgetTester tester, String name) async {
+    final directory = Platform.environment['HOME_UI_SCREENSHOTS'];
+    if (directory == null) return;
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey('home-capture')),
+    );
+    await tester.runAsync(() async {
+      final image = await boundary.toImage();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      final file = File('$directory/$name.png');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
+  }
+
   Future<LocalStore> mount(
     WidgetTester tester,
     CategoryRepository repository, {
@@ -125,7 +145,25 @@ void main() {
     final store = LocalStore(await SharedPreferences.getInstance());
     addTearDown(store.dispose);
     await store.setSource(source);
-    await tester.pumpWidget(DuanjuApp(repository: repository, store: store));
+    if (Platform.environment['HOME_UI_SCREENSHOTS'] != null) {
+      await tester.runAsync(() async {
+        final icons = FontLoader('MaterialIcons')
+          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+        await icons.load();
+        final font = Platform.environment['PLAYER_FEEDBACK_FONT'];
+        if (font != null && File(font).existsSync()) {
+          final text = FontLoader('Roboto')
+            ..addFont(File(font).readAsBytes().then(ByteData.sublistView));
+          await text.load();
+        }
+      });
+    }
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: const ValueKey('home-capture'),
+        child: DuanjuApp(repository: repository, store: store),
+      ),
+    );
     await tester.pumpAndSettle();
     return store;
   }
@@ -163,6 +201,7 @@ void main() {
       expect(rankings, findsOneWidget);
       Navigator.of(tester.element(rankings)).pop();
       await tester.pumpAndSettle();
+      await captureHome(tester, 'home-${width.toInt()}');
       await tester.tap(find.byKey(const ValueKey('toggle-search')));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsOneWidget);
