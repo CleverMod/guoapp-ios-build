@@ -178,6 +178,12 @@ void main() {
       );
       expect(repository.active.length, 1);
       await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-player-diary');
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'tv-player-settings',
+      );
       await press(tester, LogicalKeyboardKey.select);
       expect(find.text('倍速'), findsOneWidget);
       await press(tester, LogicalKeyboardKey.arrowRight);
