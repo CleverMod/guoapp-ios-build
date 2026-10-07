@@ -63,7 +63,7 @@ type yspLiveServer struct {
 	mu          sync.Mutex
 	client      *http.Client
 	mediaClient *http.Client
-	device      *yspDeviceResolver
+	device      yspDeviceSource
 	web         *yspWebResolver
 	guid        string
 	sessions    map[string]*yspLiveSession
@@ -86,9 +86,12 @@ func (engine *nativeEngine) liveServer() (*yspLiveServer, error) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = engine.downloader.proxyRouter.proxy
+	transport.MaxIdleConnsPerHost = 16
+	transport.MaxConnsPerHost = 64
+	transport.IdleConnTimeout = 30 * time.Second
 	engine.live = &yspLiveServer{client: &http.Client{Transport: transport, Timeout: 20 * time.Second}, guid: hex.EncodeToString(random), sessions: map[string]*yspLiveSession{}}
 	engine.live.mediaClient = newYSPSignedMediaClient(transport)
-	engine.live.device = newYSPDeviceResolver(engine.live.client, engine.directory)
+	engine.live.device = newYSPDevicePool(engine.live.client, engine.directory)
 	engine.live.web = newYSPWebResolver(engine.live.client, engine.downloader.attachedAccess["ysp_live"])
 	return engine.live, nil
 }

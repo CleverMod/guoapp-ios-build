@@ -51,6 +51,7 @@ type yspDeviceSession struct {
 	device   yspDeviceState
 	created  time.Time
 	lastBeat time.Time
+	linked   map[string]bool
 }
 
 type yspDeviceEntry struct {
@@ -58,6 +59,7 @@ type yspDeviceEntry struct {
 	headers  map[string]string
 	expires  time.Time
 	lastUsed time.Time
+	owner    *yspDeviceResolver
 }
 
 type yspDeviceFailure struct {
@@ -77,15 +79,21 @@ type yspDeviceResolver struct {
 	failures     map[string]yspDeviceFailure
 	sessionRetry time.Time
 	lastRequest  time.Time
+	lastBusiness time.Time
 	lastWarm     time.Time
 	cancel       context.CancelFunc
+	fast         bool
+	warm         bool
+	life         context.Context
+	lastViewed   map[string]time.Time
+	bootFailures int
 }
 
 func newYSPDeviceResolver(client *http.Client, directory string) *yspDeviceResolver {
 	jar, _ := cookiejar.New(nil)
 	generic := *client
 	generic.Jar = jar
-	return &yspDeviceResolver{client: &generic, path: filepath.Join(directory, "ysp-device-state.json"), control: make(chan struct{}, 1), entries: map[string]yspDeviceEntry{}, failures: map[string]yspDeviceFailure{}}
+	return &yspDeviceResolver{client: &generic, path: filepath.Join(directory, "ysp-device-state.json"), control: make(chan struct{}, 1), entries: map[string]yspDeviceEntry{}, failures: map[string]yspDeviceFailure{}, warm: true, lastViewed: map[string]time.Time{}}
 }
 
 func (device *yspDeviceResolver) start() {
@@ -152,8 +160,19 @@ func (device *yspDeviceResolver) pulse(ctx context.Context) {
 			if err == nil {
 				device.session, session = fresh, fresh
 				device.sessionRetry = time.Time{}
+				device.bootFailures = 0
 			} else {
 				device.sessionRetry = time.Now().Add(30 * time.Second)
+				if device.fast {
+					device.bootFailures++
+					delays := []time.Duration{15, 22, 33, 50, 60}
+					device.sessionRetry = time.Now().Add(delays[min(device.bootFailures-1, len(delays)-1)] * time.Second)
+					if device.bootFailures%3 == 0 {
+						if state, err := yspNewDeviceState(); err == nil {
+							device.device, device.loaded = state, true
+						}
+					}
+				}
 			}
 		}
 		device.mu.Unlock()
@@ -197,8 +216,15 @@ func yspWarmChannel(channel string) bool {
 }
 
 func (device *yspDeviceResolver) keepWarm(ctx context.Context, session *yspDeviceSession) {
+	interval, margin := 30*time.Second, 3*time.Minute
+	if device.fast {
+		if !device.warm {
+			return
+		}
+		interval, margin = 15*time.Second, 25*time.Second
+	}
 	device.mu.Lock()
-	if session == nil || device.session != session || time.Since(device.lastWarm) < 30*time.Second {
+	if session == nil || device.session != session || time.Since(device.lastWarm) < interval {
 		device.mu.Unlock()
 		return
 	}
@@ -215,8 +241,12 @@ func (device *yspDeviceResolver) keepWarm(ctx context.Context, session *yspDevic
 		}
 		entry, exists := device.entries[channel]
 		failure := device.failures[channel]
+		viewed := device.lastViewed[channel]
 		device.mu.Unlock()
-		if time.Now().Before(failure.retryAt) || exists && time.Until(entry.expires) > 3*time.Minute && entry.headers["APPSIGN"] != "" && entry.headers["UID"] != "" {
+		if device.fast && !viewed.IsZero() && time.Since(viewed) > 2*time.Minute {
+			continue
+		}
+		if time.Now().Before(failure.retryAt) || exists && time.Until(entry.expires) > margin && entry.headers["APPSIGN"] != "" && entry.headers["UID"] != "" {
 			continue
 		}
 		fresh, err := device.resolveChannel(ctx, session, yspDeviceLiveIDs[channel])
@@ -236,6 +266,9 @@ func (device *yspDeviceResolver) keepWarm(ctx context.Context, session *yspDevic
 		} else {
 			fresh.lastUsed = time.Now()
 			device.entries[channel] = fresh
+			if device.fast && viewed.IsZero() {
+				device.lastViewed[channel] = time.Now()
+			}
 		}
 		device.mu.Unlock()
 	}
@@ -253,6 +286,9 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	}
 	now := time.Now()
 	device.mu.Lock()
+	if device.fast {
+		device.lastViewed[channel.ID] = now
+	}
 	entry, exists := device.entries[channel.ID]
 	if exists {
 		entry.lastUsed = now
@@ -263,7 +299,7 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	if exists && now.Before(entry.expires) {
 		return entry, nil
 	}
-	stale := exists && now.Before(entry.expires.Add(2*time.Minute))
+	stale := !device.fast && exists && now.Before(entry.expires.Add(2*time.Minute))
 	if session == nil || now.Sub(session.created) >= yspDeviceSessionTTL || now.Before(failure.retryAt) {
 		if stale {
 			return entry, nil
@@ -291,7 +327,7 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	if exists && now.Before(entry.expires) {
 		return entry, nil
 	}
-	stale = exists && now.Before(entry.expires.Add(2*time.Minute))
+	stale = !device.fast && exists && now.Before(entry.expires.Add(2*time.Minute))
 	if session == nil || now.Sub(session.created) >= yspDeviceSessionTTL || now.Before(failure.retryAt) {
 		if stale {
 			return entry, nil
@@ -317,6 +353,10 @@ func (device *yspDeviceResolver) resolve(ctx context.Context, channel yspChannel
 	}
 	fresh.lastUsed = time.Now()
 	device.entries[channel.ID] = fresh
+	if session.linked == nil {
+		session.linked = map[string]bool{}
+	}
+	session.linked[channel.ID] = true
 	return fresh, nil
 }
 
@@ -324,6 +364,9 @@ func (device *yspDeviceResolver) recordFailureLocked(channel string) {
 	failure := device.failures[channel]
 	failure.count = min(failure.count+1, 5)
 	delay := min(30*time.Second<<(failure.count-1), 5*time.Minute)
+	if device.fast {
+		delay = []time.Duration{15 * time.Second, time.Minute, 2 * time.Minute}[min(failure.count-1, 2)]
+	}
 	failure.retryAt = time.Now().Add(delay)
 	device.failures[channel] = failure
 }
@@ -364,7 +407,7 @@ func yspDeviceCopyHeaders(headers map[string]string) map[string]string {
 }
 
 func (device *yspDeviceResolver) request(ctx context.Context, client *http.Client, stage, method, address string, body []byte, headers map[string]string) ([]byte, error) {
-	if delay := time.Until(device.lastRequest.Add(time.Second)); delay > 0 {
+	if delay := time.Until(device.lastRequest.Add(time.Second)); !device.fast && delay > 0 {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		select {
@@ -480,6 +523,9 @@ func (device *yspDeviceResolver) collect(ctx context.Context, state yspDeviceSta
 }
 
 func (device *yspDeviceResolver) bootstrap(ctx context.Context) (*yspDeviceSession, error) {
+	if device.fast {
+		return device.bootstrapFast(ctx)
+	}
 	if !device.loaded {
 		state, err := yspLoadDeviceState(device.path)
 		if err != nil {
@@ -502,55 +548,9 @@ func (device *yspDeviceResolver) bootstrap(ctx context.Context) (*yspDeviceSessi
 	if _, err := device.request(ctx, device.client, "dictionary", "POST", yspDeviceAPI+"player/dictionary/obtain/v1", nil, root); err != nil {
 		return nil, err
 	}
-	var key string
-	var last error
-	for attempt := 0; attempt < 4; attempt++ {
-		if attempt > 0 {
-			timer := time.NewTimer(time.Duration(attempt) * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, ctx.Err()
-			case <-timer.C:
-			}
-		}
-		timestamp := time.Now().UnixMilli()
-		headers = yspDeviceHeaders(state, timestamp)
-		startHeaders := yspDeviceCopyHeaders(headers)
-		startHeaders["UID"] = ""
-		startHeaders["X-Timestamp"] = strconv.FormatInt(timestamp, 10)
-		body, err := yspDeviceJSON(map[string]any{"key": "app_start_d1", "value": yspDeviceReport(state, "", time.Now().UnixMilli())})
-		if err != nil {
-			return nil, err
-		}
-		body = bytes.ReplaceAll(body, []byte{'/'}, []byte{'\\', '/'})
-		var raw []byte
-		raw, last = device.request(ctx, &client, "app/start", "POST", yspDeviceAPI+"api/app/start/v1/01", body, startHeaders)
-		if last == nil {
-			var reply map[string]any
-			if json.Unmarshal(raw, &reply) != nil {
-				last = &yspDeviceError{stage: "app/start", invalidate: true}
-			} else {
-				encrypted, _ := reply["data"].(string)
-				if data, ok := reply["data"].(map[string]any); ok {
-					encrypted, _ = data["key"].(string)
-				}
-				if encrypted == "" {
-					last = &yspDeviceError{stage: "app/start", invalidate: true}
-				} else {
-					key, last = yspDeviceDecrypt(encrypted, headers["X-Fingerprint"][:32])
-				}
-			}
-		}
-		if last == nil && key != "" {
-			break
-		}
-	}
-	if key == "" || last != nil {
-		if last == nil {
-			last = &yspDeviceError{stage: "app/start", invalidate: true}
-		}
-		return nil, last
+	key, headers, err := device.appStartKey(ctx, &client, state)
+	if err != nil {
+		return nil, err
 	}
 	value := yspDeviceReport(state, "", time.Now().UnixMilli())
 	value["event_id"], value["event_name"], value["event_time"] = "app_start", "应用启动", value["data_time"]
@@ -690,6 +690,18 @@ func yspDeviceAppCommon() string {
 }
 
 func (device *yspDeviceResolver) resolveChannel(ctx context.Context, session *yspDeviceSession, liveID string) (yspDeviceEntry, error) {
+	if device.fast {
+		if delay := time.Until(device.lastBusiness.Add(time.Second)); delay > 0 {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return yspDeviceEntry{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		defer func() { device.lastBusiness = time.Now() }()
+	}
 	body := map[string]any{"screenParam": session.device.ScreenParam, "rate": "", "systemType": "ios", "model": session.device.CastModel, "id": liveID,
 		"userId": "BAEBFF2B-C516-4F34-ABC0-A824A6461CBD", "clientSign": "cctvVideo", "deviceId": map[string]string{"serial": "", "imei": "", "android_id": ""}}
 	reply, err := device.postJSON(ctx, session.client, "live/v1/01", yspDeviceAPI+"api/live/v1/01", body, session.headers)
@@ -776,5 +788,64 @@ func (device *yspDeviceResolver) resolveChannel(ctx context.Context, session *ys
 	}
 	playbackHeaders := map[string]string{"UID": session.device.Profile.AndroidID, "APPID": yspDeviceAppID, "APPSIGN": sign, "APPRANDOMSTR": random,
 		"Referer": "api.cctv.cn", "User-Agent": "cctv_app_tv", "Accept": "*/*", "Accept-Encoding": "identity", "Connection": "close"}
-	return yspDeviceEntry{address: address, headers: playbackHeaders, expires: time.Now().Add(yspDeviceEntryTTL)}, nil
+	ttl := yspDeviceEntryTTL
+	if device.fast {
+		ttl = time.Minute
+	}
+	return yspDeviceEntry{address: address, headers: playbackHeaders, expires: time.Now().Add(ttl), owner: device}, nil
+}
+
+func (device *yspDeviceResolver) appStartKey(ctx context.Context, client *http.Client, state yspDeviceState) (string, map[string]string, error) {
+	headers := yspDeviceHeaders(state, time.Now().UnixMilli())
+	var key string
+	var last error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			timer := time.NewTimer(time.Duration(attempt) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return "", nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		timestamp := time.Now().UnixMilli()
+		headers = yspDeviceHeaders(state, timestamp)
+		startHeaders := yspDeviceCopyHeaders(headers)
+		startHeaders["UID"] = ""
+		startHeaders["X-Timestamp"] = strconv.FormatInt(timestamp, 10)
+		body, err := yspDeviceJSON(map[string]any{"key": "app_start_d1", "value": yspDeviceReport(state, "", time.Now().UnixMilli())})
+		if err != nil {
+			return "", nil, err
+		}
+		body = bytes.ReplaceAll(body, []byte{'/'}, []byte{'\\', '/'})
+		var raw []byte
+		raw, last = device.request(ctx, client, "app/start", "POST", yspDeviceAPI+"api/app/start/v1/01", body, startHeaders)
+		if last == nil {
+			var reply map[string]any
+			if json.Unmarshal(raw, &reply) != nil {
+				last = &yspDeviceError{stage: "app/start", invalidate: true}
+			} else {
+				encrypted, _ := reply["data"].(string)
+				if data, ok := reply["data"].(map[string]any); ok {
+					encrypted, _ = data["key"].(string)
+				}
+				if encrypted == "" {
+					last = &yspDeviceError{stage: "app/start", invalidate: true}
+				} else {
+					key, last = yspDeviceDecrypt(encrypted, headers["X-Fingerprint"][:32])
+				}
+			}
+		}
+		if last == nil && key != "" {
+			break
+		}
+	}
+	if key == "" || last != nil {
+		if last == nil {
+			last = &yspDeviceError{stage: "app/start", invalidate: true}
+		}
+		return "", nil, last
+	}
+	return key, headers, nil
 }

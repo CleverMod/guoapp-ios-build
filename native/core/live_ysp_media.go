@@ -108,7 +108,24 @@ func (live *yspLiveServer) refreshDevice(ctx context.Context, channel yspChannel
 	if client == nil {
 		client = live.client
 	}
-	text, err := live.playlistWithHeaders(ctx, entry.address, 0, client, entry.headers)
+	var text string
+	for attempt := 0; attempt < 3; attempt++ {
+		text, err = live.playlistWithHeaders(ctx, entry.address, 0, client, entry.headers)
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+		pool, pooled := live.device.(*yspDevicePool)
+		expired := strings.Contains(err.Error(), "HTTP 401") || strings.Contains(err.Error(), "HTTP 403") || strings.Contains(err.Error(), "HTTP 404") || strings.Contains(err.Error(), "有效直播清单")
+		if !pooled || !expired || attempt == 2 || attempt == 1 && !yspWarmChannel(channel.ID) {
+			break
+		}
+		fresh, retryErr := pool.retryPlaylist(ctx, channel, entry, attempt == 1)
+		if retryErr != nil {
+			err = retryErr
+			break
+		}
+		entry = fresh
+	}
 	if err == nil && strings.Contains(text, "#EXT-X-ENDLIST") {
 		err = errors.New("央视频设备线路未提供直播清单")
 	}
