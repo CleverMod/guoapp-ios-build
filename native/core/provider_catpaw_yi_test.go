@@ -97,10 +97,12 @@ func TestCatpawYiExpiredCertificateRequiresExactPinHostAndTrustedChain(t *testin
 		t.Fatal("TLS exception applied outside the configured API origin")
 	}
 	base := http.DefaultTransport.(*http.Transport).Clone()
+	originalConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	base.TLSClientConfig = originalConfig
 	c := &attachedClient{d: &Downloader{client: &http.Client{Transport: &huangguoBrowserTransport{base: newCDNTransport(base, nil)}}},
 		access: attachedAccess{Settings: map[string]string{"apiExpiredCertificateSHA256": pin}}, catpaw: &catpawState{base: "https://yi.test"}}
 	wrapped, ok := c.cpYiTransport().(*catpawYiHTTPTransport)
-	if !ok || wrapped.api.(*http.Transport).TLSClientConfig.VerifyConnection == nil || base.TLSClientConfig != nil {
+	if !ok || wrapped.api.(*http.Transport).TLSClientConfig.VerifyConnection == nil || base.TLSClientConfig != originalConfig || originalConfig.InsecureSkipVerify {
 		t.Fatal("production transport did not isolate the certificate verification policy")
 	}
 }
