@@ -26,7 +26,7 @@ void main() {
 
     expect(store.configurationError, isNull);
     expect(store.sources.map((site) => site.id), sourceIds);
-    expect(store.sources, hasLength(allSourcesEnabled ? 90 : 1));
+    expect(store.sources, hasLength(allSourcesEnabled ? 59 : 1));
     for (final source in sourceIds) {
       expect(store.allowsSource(source), isTrue);
     }
@@ -37,7 +37,42 @@ void main() {
       const LocalProfile(
         id: 'viewer',
         name: '已有用户',
-        sources: ['yeguo-worker', 'wuwu', 'xingya'],
+        sources: [
+          'yeguo-worker',
+          'wuwu',
+          'liangzi',
+          'jciyuan',
+          'ruyi',
+          'jiuyao',
+          'xinlang',
+          'wujin',
+          'jisu',
+          'yinghua',
+          'niuniu',
+          'dytt',
+          'baiduyun',
+          'suoni',
+          'hongniu',
+          'huya',
+          'haohua',
+          'jinying',
+          'shandian',
+          'feifan',
+          'modu',
+          'xiaobao',
+          'catpaw_xinlang',
+          'catpaw_ciyuancheng',
+          'catpaw_gulu',
+          'catpaw_zhuifan',
+          'catpaw_fanxi',
+          'catpaw_silisili',
+          'catpaw_jikan',
+          'catpaw_gugu',
+          'catpaw_jiuxiao',
+          'catpaw_yiyi',
+          'catpaw_luogongge',
+          'xingya',
+        ],
       ).toJson(),
     );
     expect(profile.sources, ['xingya']);

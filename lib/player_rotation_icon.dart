@@ -27,33 +27,40 @@ class _RotationPainter extends CustomPainter {
     final stroke = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.7
+      ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(8, 7, 8, 10.5),
-        const Radius.circular(1.2),
+        const Rect.fromLTWH(8.7, 7.3, 6.6, 9),
+        const Radius.circular(.8),
       ),
+      stroke,
+    );
+    stroke.strokeWidth = 1.2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(18, 7.2)
+        ..lineTo(18, 6.3)
+        ..quadraticBezierTo(18, 4.1, 15.7, 4.1)
+        ..lineTo(14.8, 4.1)
+        ..moveTo(6, 16.8)
+        ..lineTo(6, 17.7)
+        ..quadraticBezierTo(6, 19.9, 8.3, 19.9)
+        ..lineTo(9.2, 19.9),
       stroke,
     );
     canvas.drawPath(
       Path()
-        ..moveTo(18.5, 7.3)
-        ..lineTo(18.5, 5.8)
-        ..quadraticBezierTo(18.5, 3.9, 16.5, 3.9)
-        ..lineTo(13.7, 3.9)
-        ..moveTo(15.7, 2.3)
-        ..lineTo(13.7, 3.9)
-        ..lineTo(15.7, 5.5)
-        ..moveTo(5.5, 16.7)
-        ..lineTo(5.5, 18.2)
-        ..quadraticBezierTo(5.5, 20.1, 7.5, 20.1)
-        ..lineTo(10.3, 20.1)
-        ..moveTo(8.3, 18.5)
-        ..lineTo(10.3, 20.1)
-        ..lineTo(8.3, 21.7),
-      stroke,
+        ..moveTo(13.5, 4.1)
+        ..lineTo(15.3, 2.6)
+        ..lineTo(15.3, 5.6)
+        ..close()
+        ..moveTo(10.5, 19.9)
+        ..lineTo(8.7, 18.4)
+        ..lineTo(8.7, 21.4)
+        ..close(),
+      Paint()..color = color,
     );
     canvas.restore();
   }

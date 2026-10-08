@@ -32,7 +32,7 @@ func TestAttachedSourceRegistryCategoriesAndSearch(t *testing.T) {
 			t.Fatal("search capability mismatch", provider.id)
 		}
 	}
-	if len(seen) != 48 || isHuangguoProviderSource("yeguo-worker") {
+	if len(seen) != 36 || isHuangguoProviderSource("yeguo-worker") {
 		t.Fatal("attached source count or retired worker mismatch")
 	}
 }

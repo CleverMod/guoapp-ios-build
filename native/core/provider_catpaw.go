@@ -85,11 +85,16 @@ func (c *attachedClient) catpawLoad() error {
 		}
 	}
 	s.base = firstNonEmpty(mapString(s.ext, "host", "api"), mapString(s.defaults, "host"))
-	if strings.HasPrefix(s.base, "http") { s.base = strings.TrimRight(s.base, "/") }
+	if strings.HasPrefix(s.base, "http") {
+		s.base = strings.TrimRight(s.base, "/")
+	}
 	for key, value := range c.access.Headers {
 		s.headers[key] = value
 	}
 	c.catpaw = s
+	if s.script == "壹影视.py" && c.p.id == "catpaw_yiys" {
+		c.transport = c.cpYiTransport()
+	}
 	return nil
 }
 
@@ -134,7 +139,9 @@ func catpawJSON(value any) string {
 	var out strings.Builder
 	encoder := json.NewEncoder(&out)
 	encoder.SetEscapeHTML(false)
-	if encoder.Encode(value) != nil { return "" }
+	if encoder.Encode(value) != nil {
+		return ""
+	}
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
@@ -202,6 +209,11 @@ func catpawStrings(value any) []string {
 }
 
 func (c *attachedClient) cpRaw(ctx context.Context, method, target, contentType, body string, extra map[string]string) (string, error) {
+	raw, _, err := c.cpRawResponse(ctx, method, target, contentType, body, extra)
+	return raw, err
+}
+
+func (c *attachedClient) cpRawResponse(ctx context.Context, method, target, contentType, body string, extra map[string]string) (string, int, error) {
 	if !isProviderHTTPMediaURL(target) {
 		target = c.catpaw.base + target
 	}
@@ -230,7 +242,7 @@ func (c *attachedClient) cpRaw(ctx context.Context, method, target, contentType,
 		}
 		raw = text
 	}
-	return raw, err
+	return raw, status, err
 }
 
 func (c *attachedClient) cpGet(ctx context.Context, path string, params url.Values) (any, error) {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestCatpawRegistryPreservesSourceAndHelperIdentity(t *testing.T) {
-	if len(catpawDefinitions) != 33 {
+	if len(catpawDefinitions) != 22 {
 		t.Fatal("unexpected CatPaw entry count")
 	}
 	scripts := map[string]bool{}
@@ -39,7 +39,7 @@ func TestCatpawRegistryPreservesSourceAndHelperIdentity(t *testing.T) {
 			}
 		}
 	}
-	if len(scripts) != 24 || content != 28 || helpers != 4 || existing != 1 {
+	if len(scripts) != 18 || content != 17 || helpers != 4 || existing != 1 {
 		t.Fatal("source roles changed")
 	}
 }

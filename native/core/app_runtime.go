@@ -35,8 +35,6 @@ type Config struct {
 	SoraniAPIURL     string
 	GuipianURL       string
 	HanxiaoquanURL   string
-	LiangziURL       string
-	JciyuanURL       string
 	Token            string
 	AESKeyHex        string
 	InterfaceKey     string

@@ -111,6 +111,9 @@ func (c *attachedClient) cpYiToken(ctx context.Context) error {
 		return err
 	}
 	c.catpaw.values["token"], err = catpawRSAPublicDecode(mapString(attachedObject(value), "data"), key)
+	if err == nil && c.cpValue("token") == "" {
+		err = errors.New("壹影视未返回有效签名令牌")
+	}
 	return err
 }
 
@@ -462,15 +465,13 @@ func (c *attachedClient) cpRequest(ctx context.Context, method, path string, par
 	if params == nil {
 		params = url.Values{}
 	}
+	if c.catpaw.script == "壹影视.py" {
+		return c.cpYiRequest(ctx, method, path, params)
+	}
 	headers := map[string]string{}
 	body, contentType := "", ""
 	s := c.catpaw
 	switch s.script {
-	case "壹影视.py":
-		params.Set("timestamp", strconv.FormatInt(time.Now().Unix(), 10))
-		headers["APP-ID"] = c.cpValue("appID")
-		headers["Authorization"] = ""
-		headers["X-HASH-Data"] = attachedSHA(catpawSortedParams(params) + "&token=" + c.cpValue("token"))
 	case "RJAPP.py":
 		t := strconv.FormatInt(time.Now().Unix(), 10)
 		params.Set("timestamp", t)
@@ -528,18 +529,6 @@ func (c *attachedClient) cpRequest(ctx context.Context, method, path string, par
 	raw, err := c.cpRaw(ctx, method, path, contentType, body, headers)
 	if err != nil {
 		return nil, err
-	}
-	if s.script == "壹影视.py" {
-		if value, e := catpawParseJSON(raw); e == nil && mapString(attachedObject(value), "code") == "400" {
-			if e = c.cpYiToken(ctx); e != nil {
-				return nil, e
-			}
-			headers["X-HASH-Data"] = attachedSHA(catpawSortedParams(params) + "&token=" + c.cpValue("token"))
-			raw, err = c.cpRaw(ctx, method, path, contentType, body, headers)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	return c.cpDecode(raw)
 }

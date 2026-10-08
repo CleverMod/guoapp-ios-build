@@ -16,13 +16,13 @@ import (
 )
 
 func TestImportedSourcesRestoreNewProtocolsAndRetireOldEndpoints(t *testing.T) {
-	for _, source := range []string{"xiaopingguo", "luoxue", "xiaobao", "jumi", "nnvideo"} {
+	for _, source := range []string{"xiaopingguo", "luoxue", "jumi", "nnvideo"} {
 		p, ok := attachedProviderByID(source)
 		if !ok || p.kind != "imported" || !attachedSearchSource(source) || !validNativeCategory(source, p.categories[0].id) {
 			t.Fatal("missing imported protocol", source)
 		}
 	}
-	for _, source := range []string{"wuwu", "uku", "zy1080", "yingtan", "qiwei"} {
+	for _, source := range []string{"wuwu", "uku", "zy1080", "yingtan", "qiwei", "xiaobao"} {
 		if isHuangguoProviderSource(source) {
 			t.Fatal("retired source still registered", source)
 		}
@@ -37,42 +37,6 @@ func TestImportedJSONDoesNotMistakeCiphertextPrefixesForNumbers(t *testing.T) {
 	}
 	if _, err := importedDecode(`{"status":1,"data":[]}`); err != nil {
 		t.Fatal("rejected valid empty catalog", err)
-	}
-}
-
-func TestImportedWebKeepsPlaylistIdentityAcrossLineReordering(t *testing.T) {
-	reversed := false
-	d := sourceFixtureDownloader(t, func(r *http.Request) (*http.Response, error) {
-		if strings.Contains(r.URL.Path, ".png") {
-			t.Fatal("requested source image")
-		}
-		switch r.URL.Path {
-		case "/vod/detail/321.html":
-			tabs := `<a href="#playlist1">主线</a><a href="#playlist2">备用</a>`
-			if reversed {
-				tabs = `<a href="#playlist2">备用</a><a href="#playlist1">主线</a>`
-			}
-			body := `<h1>合成剧</h1>` + tabs + `<div id="playlist1"><a href="/vod/play/321-1-1.html">第1集</a><a href="/vod/play/321-1-2.html">第2集</a></div><div id="playlist2"><a href="/vod/play/321-2-1.html">第1集</a></div>`
-			return sourceFixtureResponse(r, 200, attachedJSON(body)), nil
-		case "/vod/play/321-1-2.html":
-			return sourceFixtureResponse(r, 200, `<script>var player_aaaa={"encrypt":2,"url":"`+base64.StdEncoding.EncodeToString([]byte("https://media.example.test/second.mp4?token=a%2Bb"))+`"};</script>`), nil
-		default:
-			t.Fatal("unexpected source request", r.URL.Path)
-			return nil, nil
-		}
-	})
-	_, chapters, err := d.fetchAttachedDetail(context.Background(), "xiaobao", "321")
-	if err != nil || len(chapters) != 3 {
-		t.Fatal("playlist parsing failed", err)
-	}
-	selected := chapters[1]
-	reversed = true
-	media, err := d.resolveAttachedMedia(context.Background(), Task{DramaID: "xiaobao:321", Chapter: selected})
-	if err != nil || media.URL != "https://media.example.test/second.mp4?token=a%2Bb" {
-		t.Fatal("selected episode changed", media.URL, err)
-	}
-	if _, err := d.resolveAttachedMedia(context.Background(), Task{DramaID: "xiaobao:321", Chapter: Chapter{ID: "xiaobao:999:1", Source: "xiaobao"}}); err == nil {
-		t.Fatal("accepted unrelated chapter")
 	}
 }
 

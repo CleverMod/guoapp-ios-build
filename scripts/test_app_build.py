@@ -37,7 +37,6 @@ class AppBuildTests(unittest.TestCase):
         requirements = {'xiaopingguo': ('PUB1', 'NATIVE', 'DATAIV', 'DATAKEY', 'RR_SS', 'RR_DK', 'RR_IV', 'RR_API', 'RR_REF', 'RR_UA'), 'luoxue': ('bfqPlayer', 'bfqReferer'), 'jumi': ('discoveryURL', 'numberSeed', 'numberSuffix', 'appID'), 'nnvideo': ('discoveryKey', 'discoveryURLs', 'hosts', 'xcConfig', 'zhenxiangURL', 'sjURL', 'backends', 'playerAliases')}
         for source, fields in requirements.items():
             config[source] = {'headers': {'User-Agent': 'fixture'}, 'settings': {name: 'fixture' for name in fields}}
-        config['xiaobao'] = {'headers': {'User-Agent': 'fixture'}}
         manifest = Path(__file__).resolve().parents[1] / 'native/core/catpaw_sources.json'
         for entry in json.loads(manifest.read_text(encoding='utf-8')):
             if not entry['existing']:
@@ -45,6 +44,7 @@ class AppBuildTests(unittest.TestCase):
                     'script': entry['script'], 'scriptSHA256': entry['sha256'],
                     'extend': '', 'constants': '{}', 'defaults': '{}',
                 }}
+        config['catpaw_yiys']['settings']['apiExpiredCertificateSHA256'] = '0' * 64
         config['catpaw_playback'] = {'settings': {'parses': '[{"url":"https://parser.test/?url="}]'}}
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'source_access.json'

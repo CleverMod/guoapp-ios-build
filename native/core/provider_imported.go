@@ -271,8 +271,6 @@ func (c *attachedClient) importedCatalog(ctx context.Context, page int, cat atta
 		return c.xpgCatalog(ctx, page, cat.value, query)
 	case "luoxue":
 		return c.luoxueCatalog(ctx, page, cat.value, query)
-	case "xiaobao":
-		return c.importedWebCatalog(ctx, page, cat.value, query)
 	case "nnvideo":
 		values := attachedParams("type_id", cat.value, "page", strconv.Itoa(page))
 		if query != "" {
@@ -298,8 +296,6 @@ func (c *attachedClient) importedDetail(ctx context.Context, id string) (Drama, 
 		return c.xpgDetail(ctx, id)
 	case "luoxue":
 		return c.luoxueDetail(ctx, id)
-	case "xiaobao":
-		return c.importedWebDetail(ctx, id)
 	case "nnvideo":
 		return c.nnDetail(ctx, id)
 	case "jumi":
@@ -320,8 +316,6 @@ func (c *attachedClient) importedPlay(ctx context.Context, id string, chapter Ch
 		return c.xpgPlay(ctx, payload)
 	case "luoxue":
 		return c.luoxuePlay(ctx, payload)
-	case "xiaobao":
-		return c.importedWebPlay(ctx, payload)
 	case "nnvideo":
 		return c.nnPlay(ctx, payload)
 	case "jumi":

@@ -46,10 +46,6 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.GuipianURL, guipianSiteBaseURL
 	case sourceHanxiaoquan:
 		configured, fallback = d.cfg.HanxiaoquanURL, hanxiaoquanSiteBaseURL
-	case sourceLiangzi:
-		configured, fallback = d.cfg.LiangziURL, liangziBaseURL
-	case sourceJciyuan:
-		configured, fallback = d.cfg.JciyuanURL, jciyuanBaseURL
 	case sourceXifu:
 		fallback = xifuBaseURL
 	default:
@@ -94,10 +90,6 @@ func providerSourceForURL(raw string) string {
 		return sourceGuipian
 	case host == "jennyhow.com" || host == "www.jennyhow.com":
 		return sourceHanxiaoquan
-	case host == "cj.lziapi.com":
-		return sourceLiangzi
-	case host == "jciyuan.com" || host == "www.jciyuan.com":
-		return sourceJciyuan
 	case host == "minidrama-api.contentchina.com":
 		return sourceXifu
 	default:

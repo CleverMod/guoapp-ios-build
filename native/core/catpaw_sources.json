@@ -16,14 +16,6 @@
     "existing": false
   },
   {
-    "id": "catpaw_xinlang",
-    "name": "新浪资源",
-    "script": "新浪资源.py",
-    "sha256": "d188e1d63cc4f633cc96d14287f22ddf44fd6c1616f851eef66e5da5c0e8ecb7",
-    "helper": false,
-    "existing": false
-  },
-  {
     "id": "catpaw_duboku",
     "name": "独播库",
     "script": "独播库.py",
@@ -46,14 +38,6 @@
     "sha256": "e390f6955581520f3caccfc4a92ef6032293ef76fee01c3c3b1b0adc00af75f1",
     "helper": false,
     "existing": true
-  },
-  {
-    "id": "catpaw_ciyuancheng",
-    "name": "次元城动漫",
-    "script": "cycapp.py",
-    "sha256": "d6cb6312a74dce881cc18c36c9c4c3c45dd67861fc48f8c4bbb619c127d5d092",
-    "helper": false,
-    "existing": false
   },
   {
     "id": "catpaw_xifandongman",
@@ -88,34 +72,10 @@
     "existing": false
   },
   {
-    "id": "catpaw_gulu",
-    "name": "咕噜映画",
-    "script": "Appfox.py",
-    "sha256": "dffe2a4dd8947eea88b1808d0b4c70af3c66584910bd3242c803d338a0931bb2",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_zhuifan",
-    "name": "追番达人",
-    "script": "Appfox.py",
-    "sha256": "dffe2a4dd8947eea88b1808d0b4c70af3c66584910bd3242c803d338a0931bb2",
-    "helper": false,
-    "existing": false
-  },
-  {
     "id": "catpaw_quanyingshi",
     "name": "全影视PRO",
     "script": "FeiApp.py",
     "sha256": "6be1b9c0865f055749dbd23ee55ad779cd251b5d49e236e93cf7523bb6a6ec09",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_fanxi",
-    "name": "番喜",
-    "script": "ApptoV5无加密.py",
-    "sha256": "e89c60ae99da03d999e2e275b55370c959593d8fcc907ec1e488f58cf8909dff",
     "helper": false,
     "existing": false
   },
@@ -132,22 +92,6 @@
     "name": "BILFUN影视大全",
     "script": "AppMuou.py",
     "sha256": "f2e8e68d4c276bb01c36e5a4027fb22ecfec865078f67280ec481806034ab4e5",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_silisili",
-    "name": "嘶哩嘶哩",
-    "script": "skapp.py",
-    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_jikan",
-    "name": "即看影视",
-    "script": "skapp.py",
-    "sha256": "8435d857e8eb77fe4ef72f432005246a1548d2ca16a376cf24c33a930a718dcb",
     "helper": false,
     "existing": false
   },
@@ -188,38 +132,6 @@
     "name": "gotto",
     "script": "AppV2.py",
     "sha256": "3318a29e254fa16d95c380f0b4cbfba544e1a0d2867ac54330e4727817c29f25",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_gugu",
-    "name": "咕咕动漫",
-    "script": "getapp3.4.6.py",
-    "sha256": "0cdf22f727651940e00bb9a0b3be4290555d74906e596d20f94b0ade689acf43",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_jiuxiao",
-    "name": "九霄视频",
-    "script": "Hmys.py",
-    "sha256": "de6ae54342f92aab865a159f813821994e53f205495c6c6e8ab7a619a9551310",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_yiyi",
-    "name": "YIYI影视",
-    "script": "99APP2.py",
-    "sha256": "ad44feaec09df2b582d47f0887bf9c71c49e3577af6a764d944aecb28eb40ff9",
-    "helper": false,
-    "existing": false
-  },
-  {
-    "id": "catpaw_luogongge",
-    "name": "落攻阁影视",
-    "script": "99APP2.py",
-    "sha256": "ad44feaec09df2b582d47f0887bf9c71c49e3577af6a764d944aecb28eb40ff9",
     "helper": false,
     "existing": false
   },

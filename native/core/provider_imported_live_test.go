@@ -47,7 +47,7 @@ func TestImportedLiveSourceProtocols(t *testing.T) {
 			}
 		}
 	})
-	for _, source := range []string{"xiaopingguo", "luoxue", "xiaobao", "jumi", "nnvideo"} {
+	for _, source := range []string{"xiaopingguo", "luoxue", "jumi", "nnvideo"} {
 		t.Run(source, func(t *testing.T) {
 			t.Parallel()
 			result := importedLiveResult{Source: source}

@@ -17,9 +17,6 @@ var attachedProviders = []attachedProvider{
 	{id: "luoxue", name: "洛雪TV", base: "https://tv.lxyy.club", kind: "imported", search: true, categories: []attachedCategory{
 		{"movie", "电影", "movie", ""}, {"series", "剧集", "series", ""}, {"anime", "动漫", "anime", ""}, {"variety", "综艺", "variety", ""},
 	}},
-	{id: "xiaobao", name: "小宝影院", base: "https://www.xiaobaotv.com", kind: "imported", search: true, categories: []attachedCategory{
-		{"1", "电影", "1", ""}, {"2", "电视剧", "2", ""}, {"3", "动漫", "3", ""}, {"4", "综艺", "4", ""}, {"11", "短剧", "11", ""},
-	}},
 	{id: "jumi", name: "剧迷", base: "http://2025-1329689796.cos.ap-guangzhou.myqcloud.com", kind: "imported", search: true, categories: []attachedCategory{
 		{"movie", "电影", "movie", ""}, {"tv", "剧集", "tv", ""},
 	}},

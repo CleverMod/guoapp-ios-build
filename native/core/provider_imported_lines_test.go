@@ -1,10 +1,8 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"testing"
 )
 
@@ -31,26 +29,5 @@ func TestImportedLinesKeepMetadataAndLogicalEpisodeCounts(t *testing.T) {
 		if json.Unmarshal(body, &decoded) != nil || decoded.LineID == "" || decoded.LineName == "" {
 			t.Fatal("line metadata lost at bridge")
 		}
-	}
-}
-
-func TestImportedNativeMovieDetailCountsOneEpisodeAcrossThreeLines(t *testing.T) {
-	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/vod/detail/321.html" {
-			t.Fatal("unexpected request", request.URL.Path)
-		}
-		body := `<h1>合成电影</h1>`
-		for line := 1; line <= 3; line++ {
-			body += fmt.Sprintf(`<a href="#playlist%d">线路%d</a><div id="playlist%d"><a href="/vod/play/321-%d-1.html">正片</a></div>`, line, line, line, line)
-		}
-		return sourceFixtureResponse(request, 200, body), nil
-	})
-	value, err := engine.nativeDetail(context.Background(), nativeDrama{ID: "xiaobao:321", Source: "xiaobao", Title: "合成电影"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	row := value.(map[string]any)
-	if row["drama"].(nativeDrama).Episodes != 1 || len(row["chapters"].([]Chapter)) != 3 {
-		t.Fatal("three routes counted as three movie episodes")
 	}
 }

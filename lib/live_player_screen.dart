@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import 'app_layout.dart';
 import 'app_orientation.dart';
+import 'app_theme.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'live_models.dart';
@@ -103,8 +104,8 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     if (widget.videoBuilder == null && !Platform.isAndroid) {
       _video = VideoController(
         _player,
-        configuration: VideoControllerConfiguration(
-          enableHardwareAcceleration: !Platform.isIOS,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: true,
         ),
       );
     }
@@ -995,12 +996,15 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                     key: const ValueKey('live-controls'),
                     opacity: _controlsVisible ? 1 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_catchupStart != null) _replayBar(),
-                        _controlBar(),
-                      ],
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_catchupStart != null) _replayBar(),
+                          _controlBar(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1030,7 +1034,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   @override
   Widget build(BuildContext context) {
     final television = AppLayout.isTelevision(context);
-    return PopScope(
+    final screen = PopScope(
       canPop: !_fullscreen || television,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _fullscreen) _setFullscreen(false);
@@ -1056,6 +1060,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           onKeyEvent: _handleKey,
           autofocus: !television,
           child: Scaffold(
+            backgroundColor: _fullscreen ? Colors.black : null,
             appBar: _fullscreen
                 ? null
                 : AppBar(
@@ -1069,6 +1074,10 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                     ],
                   ),
             body: SafeArea(
+              top: !_fullscreen,
+              bottom: !_fullscreen,
+              left: !_fullscreen,
+              right: !_fullscreen,
               child: _fullscreen || television
                   ? _videoPane()
                   : Column(
@@ -1116,6 +1125,12 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           ),
         ),
       ),
+    );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.systemBars(
+        _fullscreen ? Brightness.dark : Theme.of(context).brightness,
+      ),
+      child: screen,
     );
   }
 }

@@ -18,7 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
     final store = testStore(await SharedPreferences.getInstance());
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(store.sources.length, allSourcesEnabled ? 90 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 59 : 1);
     expect(
       SourceSite.values.any((source) => source.id == 'dsd'),
       allSourcesEnabled,
@@ -28,7 +28,7 @@ void main() {
     expect(SourceSite.byId('dsd').name, '帝果');
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     expect(store.source, allSourcesEnabled ? 'huangdou' : 'hongguo');
-    expect(store.sources.length, allSourcesEnabled ? 90 : 1);
+    expect(store.sources.length, allSourcesEnabled ? 59 : 1);
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     store.dispose();
   });
@@ -50,13 +50,13 @@ void main() {
         'cloudfront',
       ]);
       expect(SourceSite.allValues.skip(11).take(2).map((source) => source.id), [
-        'liangzi',
-        'jciyuan',
+        'zy155',
+        'ikun',
       ]);
-      expect(SourceSite.collectorValues, hasLength(30));
+      expect(SourceSite.collectorValues, hasLength(11));
       expect(
         SourceSite.allValues.map((source) => source.id).toSet(),
-        hasLength(90),
+        hasLength(59),
       );
       for (final source in SourceSite.collectorValues.map(
         (source) => source.id,

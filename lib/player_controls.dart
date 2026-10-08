@@ -384,9 +384,11 @@ class _PlayerControlsState extends State<PlayerControls> {
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: const Color(0xE61F1F1F),
+                    color: Colors.black.withValues(alpha: .22),
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF353535)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .08),
+                    ),
                   ),
                   child: IconButton(
                     key: const ValueKey('player-rotate'),

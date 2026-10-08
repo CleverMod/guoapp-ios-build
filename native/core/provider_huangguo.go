@@ -31,8 +31,6 @@ const (
 	sourceSorani        = "sorani"
 	sourceGuipian       = "guipian"
 	sourceHanxiaoquan   = "hanxiaoquan"
-	sourceLiangzi       = "liangzi"
-	sourceJciyuan       = "jciyuan"
 	sourceXifu          = "xifu"
 
 	providerMaxBodyBytes = 20 * 1024 * 1024
@@ -126,10 +124,6 @@ func canonicalProviderSource(source string) string {
 		return sourceGuipian
 	case "hanxiaoquan", "jennyhow.com", "www.jennyhow.com":
 		return sourceHanxiaoquan
-	case "liangzi", "cj.lziapi.com":
-		return sourceLiangzi
-	case "jciyuan", "jciyuan.com", "www.jciyuan.com":
-		return sourceJciyuan
 	case "xifu", "minidrama-api.contentchina.com":
 		return sourceXifu
 	default:

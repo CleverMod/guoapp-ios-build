@@ -13,7 +13,7 @@ import (
 )
 
 func TestMaccmsRegistrySeparatesBackendsAndMatchesExactHosts(t *testing.T) {
-	if len(maccmsProviders) != 30 {
+	if len(maccmsProviders) != 11 {
 		t.Fatal("wrong audited collector count")
 	}
 	ids, endpoints := map[string]bool{}, map[string]bool{}
@@ -137,7 +137,7 @@ func TestMaccmsCatalogRejectsWrongPageAndPreservesFallbackPagination(t *testing.
 			d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
 				return sourceFixtureResponse(request, http.StatusOK, fixture.body), nil
 			})
-			_, more, err := d.fetchMaccmsCatalogPage(context.Background(), sourceLiangzi, 2, "", "")
+			_, more, err := d.fetchMaccmsCatalogPage(context.Background(), "zy155", 2, "", "")
 			if (err != nil) != fixture.wantErr || more != fixture.more {
 				t.Fatalf("wrong pagination: more=%v err=%v", more, err)
 			}
@@ -205,7 +205,7 @@ func TestMaccmsDetailRejectsUnrelatedRecordAndParserOnlyLines(t *testing.T) {
 		d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
 			return sourceFixtureResponse(request, http.StatusOK, body), nil
 		})
-		if _, _, err := d.fetchMaccmsDetail(context.Background(), sourceLiangzi, "123"); err == nil {
+		if _, _, err := d.fetchMaccmsDetail(context.Background(), "zy155", "123"); err == nil {
 			t.Fatal("unrelated or unsupported detail was accepted")
 		}
 	}
@@ -222,7 +222,7 @@ func TestMaccmsSourcesRespectEditionAndSeparateIdentity(t *testing.T) {
 			t.Fatal("new source accepted an old source chapter")
 		}
 	}
-	if providerDramaID(sourceLiangzi, "123") == providerDramaID(sourceJciyuan, "123") || !nativeSourceAvailable(sourceHongguo) {
+	if providerDramaID("zy155", "123") == providerDramaID("ikun", "123") || !nativeSourceAvailable(sourceHongguo) {
 		t.Fatal("new sources collided or changed the default source")
 	}
 }

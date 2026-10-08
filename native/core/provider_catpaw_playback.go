@@ -60,9 +60,16 @@ func (c *attachedClient) catpawPlayEpisode(ctx context.Context, id, line string,
 			target, headers, err = c.cpParse(ctx, "", target)
 		}
 	case "壹影视.py":
+		headers["User-Agent"] = firstNonEmpty(s.headers["User-Agent"], "Android/OkHttp")
 		data, err = c.cpPost(ctx, "/vod-app/vod/playUrl", attachedParams("sourceCode", line, "urlEncode", target))
 		if err == nil {
-			target = firstNonEmpty(mapString(attachedObject(attachedAt(data, "data")), "url"), target)
+			row := attachedObject(attachedAt(data, "data"))
+			if address := mapString(row, "url"); isProviderHTTPMediaURL(address) {
+				for key, value := range catpawParserHeaders(row) {
+					headers[key] = value
+				}
+				return c.cpYiMedia(ctx, address, headers)
+			}
 		}
 	case "cycapp.py":
 		headers["User-Agent"] = "libmpv"

@@ -29,6 +29,13 @@ SOURCE_SCRIPTS = (
 )
 
 
+RETIRED_SOURCE_IDS = frozenset((
+    'catpaw_xinlang', 'catpaw_ciyuancheng', 'catpaw_gulu', 'catpaw_zhuifan',
+    'catpaw_fanxi', 'catpaw_silisili', 'catpaw_jikan', 'catpaw_gugu',
+    'catpaw_jiuxiao', 'catpaw_yiyi', 'catpaw_luogongge',
+))
+
+
 def script_configuration(code):
     tree = ast.parse(code)
     defaults = {}
@@ -89,10 +96,14 @@ def import_sources(player, project, script_directory=None):
     subscription = subscriptions[0]
     access_path = project / 'native/private/source_access.json'
     access = json.loads(access_path.read_text(encoding='utf-8'))
+    for source_id in RETIRED_SOURCE_IDS:
+        access.pop(source_id, None)
     definitions, loaded = [], {}
     for source_id, filename, source in zip(SOURCE_IDS, SOURCE_SCRIPTS, subscription['sources']):
         if Path(source['originalApi']).name != filename or not source.get('enabled'):
             raise ValueError('源顺序或启用状态与已适配配置不符。')
+        if source_id in RETIRED_SOURCE_IDS:
+            continue
         if filename not in loaded:
             cache = player / 'catpaw_data/python_sources' / source['fileName']
             extracted = script_directory / filename if script_directory else None
@@ -121,7 +132,10 @@ def import_sources(player, project, script_directory=None):
         headers = {k: str(v) for k, v in headers.items() if isinstance(v, (str, int))}
         headers.pop('Accept-Encoding', None)
         headers.pop('Connection', None)
+        retained = {key: value for key, value in access.get(source_id, {}).get('settings', {}).items()
+                    if key == 'apiExpiredCertificateSHA256'}
         access[source_id] = {'headers': headers, 'settings': {
+            **retained,
             'script': filename, 'scriptSHA256': checksum, 'extend': source['extend'],
             'constants': json.dumps(constants, ensure_ascii=False, separators=(',', ':')),
             'defaults': json.dumps(defaults, ensure_ascii=False, separators=(',', ':')),

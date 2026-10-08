@@ -13,8 +13,11 @@ func TestCatalogRestoreDiscardsUnregisteredSources(t *testing.T) {
 		catalogs := map[string][]nativeDrama{}
 		states := map[string]nativeCatalogState{}
 		categories := map[string][]nativeCategory{}
-		known := []string{sourceHongguo, sourceHuangdou, sourceXifu, "xiaopingguo", "xiaobao", sourceLiangzi + "|1"}
+		known := []string{sourceHongguo, sourceHuangdou, sourceXifu, "xiaopingguo", "catpaw_yiys", "zy155|1"}
 		removed := []string{"wuwu", "wuwu|1", "uku", "uku|1", "zy1080", "zy1080|1", "hongdou", "hongdou|334"}
+		for _, source := range []string{"liangzi", "jciyuan", "ruyi", "jiuyao", "xinlang", "wujin", "jisu", "yinghua", "niuniu", "dytt", "baiduyun", "suoni", "hongniu", "huya", "haohua", "jinying", "shandian", "feifan", "modu", "xiaobao", "catpaw_xinlang", "catpaw_ciyuancheng", "catpaw_gulu", "catpaw_zhuifan", "catpaw_fanxi", "catpaw_silisili", "catpaw_jikan", "catpaw_gugu", "catpaw_jiuxiao", "catpaw_yiyi", "catpaw_luogongge"} {
+			removed = append(removed, source, source+"|1")
+		}
 		for _, key := range append(append([]string{}, known...), removed...) {
 			catalogs[key] = []nativeDrama{{ID: key + ":123", Title: "合成缓存"}}
 			states[key] = nativeCatalogState{Page: 2}

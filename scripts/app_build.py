@@ -94,9 +94,15 @@ def source_access_flags(path=None, required=False):
             settings = config.get(source, {}).get('settings', {})
             if any(not settings.get(name) for name in names):
                 raise SystemExit(f'缺少 {source} 的内置协议配置，请更新 GUOAPP_SOURCE_ACCESS。')
-        for source in (*requirements, 'xiaobao'):
+        for source in requirements:
             if not config.get(source, {}).get('headers', {}).get('User-Agent'):
                 raise SystemExit(f'缺少 {source} 的内置请求头，请更新 GUOAPP_SOURCE_ACCESS。')
+        pin = config.get('catpaw_yiys', {}).get('settings', {}).get('apiExpiredCertificateSHA256', '')
+        try:
+            if len(pin) != 64 or len(bytes.fromhex(pin)) != 32:
+                raise ValueError()
+        except ValueError:
+            raise SystemExit('缺少壹影视的已确认过期证书指纹，请更新 GUOAPP_SOURCE_ACCESS。') from None
         manifest = Path(__file__).resolve().parents[1] / 'native/core/catpaw_sources.json'
         for entry in json.loads(manifest.read_text(encoding='utf-8')):
             source = entry['id']
