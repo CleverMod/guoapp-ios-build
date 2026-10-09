@@ -1,4 +1,4 @@
-name: Build app packages
+name: Build Windows packages
 on:
   push:
     branches: [main, master]
