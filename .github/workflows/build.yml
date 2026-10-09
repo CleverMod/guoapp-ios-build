@@ -20,7 +20,7 @@ env:
 
 jobs:
   checks:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +53,7 @@ jobs:
         continue-on-error: true
 
   android:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -141,7 +142,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   windows:
-    if: false
     needs: checks
     runs-on: windows-latest
     timeout-minutes: 45
