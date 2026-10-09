@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -22,7 +23,7 @@ func newYSPSignedMediaClient(transport *http.Transport) *http.Client {
 	mediaTransport := transport.Clone()
 	mediaTransport.ForceAttemptHTTP2 = false
 	mediaTransport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
-	return &http.Client{Transport: mediaTransport, Timeout: 20 * time.Second, CheckRedirect: func(request *http.Request, via []*http.Request) error {
+	return &http.Client{Transport: mediaTransport, Timeout: 30 * time.Second, CheckRedirect: func(request *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return errors.New("央视频分片重定向次数过多")
 		}
@@ -109,8 +110,10 @@ func (live *yspLiveServer) refreshDevice(ctx context.Context, channel yspChannel
 		client = live.client
 	}
 	var text string
+	info := entry.info
 	for attempt := 0; attempt < 3; attempt++ {
-		text, err = live.playlistWithHeaders(ctx, entry.address, 0, client, entry.headers)
+		info = entry.info
+		text, err = live.playlistWithHeaders(context.WithValue(ctx, yspManifestInfoKey{}, &info), entry.address, 0, client, entry.headers)
 		if err == nil || ctx.Err() != nil {
 			break
 		}
@@ -149,6 +152,7 @@ func (live *yspLiveServer) refreshDevice(ctx context.Context, channel yspChannel
 	})
 	yspPruneLiveResources(state)
 	state.mode, state.errorText, state.failures, state.refreshed = "device", "", 0, time.Now()
+	state.info = info
 	live.device.accept(channel, entry)
 	return nil
 }
@@ -165,10 +169,34 @@ func (live *yspLiveServer) serveMedia(w http.ResponseWriter, r *http.Request, se
 		http.NotFound(w, r)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	detach := context.AfterFunc(session.ctx, cancel)
 	defer cancel()
 	defer detach()
+	cacheKey := yspSegmentCacheKey(resource)
+	if live.segmentCache != nil {
+		if cached, found := live.segmentCache.get(cacheKey); found {
+			yspServeCachedMedia(w, r, cached)
+			return
+		}
+		if r.Method == http.MethodGet && r.Header.Get("Range") == "" {
+			done, leader := live.segmentCache.begin(cacheKey)
+			if !leader {
+				select {
+				case <-ctx.Done():
+					http.Error(w, "直播分片等待超时", http.StatusGatewayTimeout)
+					return
+				case <-done:
+				}
+				if cached, found := live.segmentCache.get(cacheKey); found {
+					yspServeCachedMedia(w, r, cached)
+					return
+				}
+			} else {
+				defer live.segmentCache.finish(cacheKey, done)
+			}
+		}
+	}
 	request, err := http.NewRequestWithContext(ctx, r.Method, resource.address, nil)
 	if err != nil {
 		http.Error(w, "直播分片地址无效", http.StatusBadGateway)
@@ -204,8 +232,44 @@ func (live *yspLiveServer) serveMedia(w http.ResponseWriter, r *http.Request, se
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Cache", "MISS-UPSTREAM")
 	w.WriteHeader(response.StatusCode)
 	if r.Method == "GET" {
-		io.CopyBuffer(w, response.Body, make([]byte, 256<<10))
+		capacity := 0
+		if live.segmentCache != nil && response.StatusCode == http.StatusOK && r.Header.Get("Range") == "" {
+			capacity = min(yspSegmentCacheItemLimit, live.segmentCache.stats().LimitMB<<20)
+		}
+		writer := &yspCachingWriter{destination: w, limit: capacity, complete: capacity > 0 && (response.ContentLength < 0 || response.ContentLength <= int64(capacity))}
+		_, copyErr := io.CopyBuffer(writer, response.Body, make([]byte, 256<<10))
+		if copyErr == nil && writer.complete && live.segmentCache != nil {
+			headers := yspCacheResponseHeaders(response)
+			if yspCachedLengthValid(headers, writer.body) {
+				live.segmentCache.put(cacheKey, writer.body, headers)
+			}
+		}
 	}
+}
+
+func yspServeCachedMedia(w http.ResponseWriter, r *http.Request, cached yspCachedMedia) {
+	for key, values := range cached.headers {
+		if key != "Content-Length" {
+			w.Header()[key] = append([]string(nil), values...)
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Cache", "HIT-RAM")
+	modified, _ := http.ParseTime(cached.headers.Get("Last-Modified"))
+	http.ServeContent(w, r, "live-media", modified, bytes.NewReader(cached.body))
+}
+
+func yspRegisterMedia(state *yspLiveState, text string, headers map[string]string) {
+	if state.media == nil {
+		state.media = map[string]yspLiveResource{}
+	}
+	yspVisitPlaylistURLs(text, func(address string) {
+		if isProviderHTTPMediaURL(address) {
+			state.media[yspLiveResourceID(address)] = yspLiveResource{address: address, headers: yspDeviceCopyHeaders(headers), expires: time.Now().Add(2 * time.Minute)}
+		}
+	})
+	yspPruneLiveResources(state)
 }

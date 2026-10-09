@@ -29,7 +29,7 @@ func TestYSPPlaylistDoesNotReplayEvictedHistory(t *testing.T) {
 		if state.sequence != int64(end) {
 			t.Fatalf("historical segments were appended again: sequence=%d want=%d", state.sequence, end)
 		}
-		if !strings.Contains(state.playlist, fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n", end-29)) {
+		if !strings.Contains(state.playlist, fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n", end-14)) {
 			t.Fatalf("playlist sequence did not advance with its window: %s", state.playlist)
 		}
 		if strings.Contains(state.playlist, "#EXT-X-ENDLIST") || strings.Contains(state.playlist, "#EXT-X-DISCONTINUITY\n") {
@@ -45,7 +45,7 @@ func TestYSPPlaylistDoesNotReplayEvictedHistory(t *testing.T) {
 	if err := yspMergePlaylist(state, yspFixturePlaylist(140, 170, "main", "stale"), false); err != nil {
 		t.Fatal(err)
 	}
-	if state.sequence != before || !strings.Contains(state.playlist, "/180.ts?") {
+	if state.sequence != before || !strings.Contains(state.playlist, "/179.ts?") {
 		t.Fatal("a delayed snapshot rewound the live edge")
 	}
 }

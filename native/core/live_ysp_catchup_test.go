@@ -129,7 +129,8 @@ func TestYSPCatchupFinitePlaylistPreservesHistoryAndEncryption(t *testing.T) {
 	live.sessions = map[string]*yspLiveSession{"replay": {channel: yspChannels[0], ctx: life, cancel: cancel, yspLiveState: state}}
 	response := httptest.NewRecorder()
 	live.serve(response, httptest.NewRequest(http.MethodGet, "/live/replay/index.m3u8", nil))
-	if response.Code != 200 || response.Body.String() != state.playlist || requests != 2 {
+	expected := yspProxyLivePlaylist(state.playlist, "/live/replay/media/", state.media)
+	if response.Code != 200 || response.Body.String() != expected || requests != 2 {
 		t.Fatal("a finite replay expired under the live refresh deadline")
 	}
 	live.release("replay")

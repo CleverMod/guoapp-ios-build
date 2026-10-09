@@ -264,7 +264,8 @@ func (live *yspLiveServer) refreshWeb(ctx context.Context, channel yspChannel, s
 	if err != nil {
 		return err
 	}
-	text, err := live.playlistWithHeaders(ctx, entry.address, 0, live.client, entry.headers)
+	info := yspStreamInfo{Route: "web"}
+	text, err := live.playlistWithHeaders(context.WithValue(ctx, yspManifestInfoKey{}, &info), entry.address, 0, live.client, entry.headers)
 	if err == nil && strings.Contains(text, "#EXT-X-ENDLIST") {
 		err = errors.New("央视频 Web 线路未提供直播清单")
 	}
@@ -287,5 +288,6 @@ func (live *yspLiveServer) refreshWeb(ctx context.Context, channel yspChannel, s
 	})
 	yspPruneLiveResources(state)
 	state.mode, state.errorText, state.failures, state.refreshed = "web", "", 0, time.Now()
+	state.info = info
 	return nil
 }

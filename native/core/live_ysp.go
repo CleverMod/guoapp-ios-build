@@ -49,6 +49,7 @@ type yspLiveState struct {
 	failures  int
 	errorText string
 	media     map[string]yspLiveResource
+	info      yspStreamInfo
 }
 type yspLiveSession struct {
 	mu        sync.Mutex
@@ -57,19 +58,32 @@ type yspLiveSession struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	lastUsed  time.Time
+	gateway   bool
+	format    yspStreamInfo
 	yspLiveState
 }
 type yspLiveServer struct {
-	mu          sync.Mutex
-	client      *http.Client
-	mediaClient *http.Client
-	device      yspDeviceSource
-	web         *yspWebResolver
-	guid        string
-	sessions    map[string]*yspLiveSession
-	cache       map[string]yspLiveState
-	server      *http.Server
-	address     string
+	mu              sync.Mutex
+	client          *http.Client
+	mediaClient     *http.Client
+	device          yspDeviceSource
+	web             *yspWebResolver
+	guid            string
+	sessions        map[string]*yspLiveSession
+	cache           map[string]yspLiveState
+	server          *http.Server
+	address         string
+	settings        nativeLiveSettings
+	segmentCache    *yspSegmentCache
+	created         time.Time
+	eventsMu        sync.Mutex
+	events          []yspLiveEvent
+	eventTimes      map[string]time.Time
+	gatewayServer   *http.Server
+	gatewayURLs     []string
+	gatewayToken    string
+	gatewaySessions map[string]string
+	gatewayOpen     map[string]*yspGatewayPending
 }
 
 var yspPlaylistURI = regexp.MustCompile(`URI="([^"]+)"`)
@@ -89,9 +103,12 @@ func (engine *nativeEngine) liveServer() (*yspLiveServer, error) {
 	transport.MaxIdleConnsPerHost = 16
 	transport.MaxConnsPerHost = 64
 	transport.IdleConnTimeout = 30 * time.Second
-	engine.live = &yspLiveServer{client: &http.Client{Transport: transport, Timeout: 20 * time.Second}, guid: hex.EncodeToString(random), sessions: map[string]*yspLiveSession{}}
+	settings := yspLoadLiveSettings(engine.directory)
+	engine.live = &yspLiveServer{client: &http.Client{Transport: transport, Timeout: 20 * time.Second}, guid: hex.EncodeToString(random), sessions: map[string]*yspLiveSession{}, settings: settings, segmentCache: newYSPSegmentCache(settings.CacheMB), created: time.Now()}
 	engine.live.mediaClient = newYSPSignedMediaClient(transport)
 	engine.live.device = newYSPDevicePool(engine.live.client, engine.directory)
+	engine.live.device.(*yspDevicePool).configure(settings.DeviceMode, settings.LinksPerDevice)
+	engine.live.device.(*yspDevicePool).logEvent = engine.live.event
 	engine.live.web = newYSPWebResolver(engine.live.client, engine.downloader.attachedAccess["ysp_live"])
 	return engine.live, nil
 }
@@ -136,17 +153,20 @@ func (live *yspLiveServer) cleanup(srv *http.Server) {
 			s.mu.Lock()
 			catchup := s.catchup != nil
 			s.mu.Unlock()
-			if !catchup && time.Since(s.lastUsed) > 2*time.Minute {
+			if (!catchup || s.gateway) && time.Since(s.lastUsed) > 2*time.Minute {
 				s.cancel()
 				delete(live.sessions, token)
 			}
 		}
-		if len(live.sessions) == 0 {
+		if len(live.sessions) == 0 && live.gatewayServer == nil {
 			live.server = nil
 			if live.device != nil {
 				live.device.stop()
 			}
 			live.mu.Unlock()
+			if live.segmentCache != nil {
+				live.segmentCache.clear()
+			}
 			srv.Close()
 			return
 		}
@@ -190,7 +210,7 @@ func (live *yspLiveServer) openWithOptions(ctx context.Context, slug, query stri
 	}
 	s := &yspLiveSession{channel: channel, ctx: life, cancel: cancel, yspLiveState: yspLiveState{mode: mode, catchup: window}, lastUsed: time.Now()}
 	live.mu.Lock()
-	if len(live.sessions) >= 4 {
+	if len(live.sessions) >= 15 {
 		live.mu.Unlock()
 		cancel()
 		return nativePlan{}, errors.New("直播会话过多，请关闭旧播放页后重试")
@@ -245,7 +265,15 @@ func (live *yspLiveServer) openWithOptions(ctx context.Context, slug, query stri
 			live.keepFresh(s)
 		}()
 	}
-	return nativePlan{URL: address + "/live/" + token + "/index.m3u8", Session: token, Quality: 1080, Qualities: []int{1080}, Headers: map[string]string{"User-Agent": playbackUA, "Referer": "https://live.cctv.cn/"}, RouteCount: 1}, nil
+	s.mu.Lock()
+	info := s.info
+	info.Route = s.mode
+	s.mu.Unlock()
+	qualities := []int{}
+	if info.Height > 0 {
+		qualities = []int{info.Height}
+	}
+	return nativePlan{URL: address + "/live/" + token + "/index.m3u8", Session: token, Quality: info.Height, Qualities: qualities, LiveInfo: &info, Headers: map[string]string{"User-Agent": playbackUA, "Referer": "https://live.cctv.cn/"}, RouteCount: 1}, nil
 }
 func (live *yspLiveServer) release(token string) {
 	live.mu.Lock()
@@ -271,6 +299,9 @@ func (live *yspLiveServer) playlistWithHeaders(ctx context.Context, address stri
 	text := strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
 	if !strings.HasPrefix(text, "#EXTM3U") {
 		return "", errors.New("央视频未返回有效直播清单")
+	}
+	if info, ok := ctx.Value(yspManifestInfoKey{}).(*yspStreamInfo); ok {
+		yspReadManifestInfo(text, info)
 	}
 	base, err := url.Parse(final)
 	if err != nil {
@@ -474,13 +505,16 @@ func yspMergePlaylist(s *yspLiveState, text string, changedRoute bool) error {
 		}
 		s.segments = append(s.segments, seg)
 	}
-	if len(s.segments) > 60 {
-		s.segments = append([]yspSegment(nil), s.segments[len(s.segments)-60:]...)
+	if len(s.segments) > 120 {
+		s.segments = append([]yspSegment(nil), s.segments[len(s.segments)-120:]...)
 	}
 	window := s.segments
-	windowSize := min(30, len(fresh))
+	windowSize := min(15, len(fresh))
 	if len(window) > windowSize {
 		window = window[len(window)-windowSize:]
+	}
+	if len(window) >= 4 {
+		window = window[:len(window)-1]
 	}
 	s.target = target
 	discontinuity := window[0].discontinuity
@@ -519,6 +553,9 @@ func (live *yspLiveServer) refresh(ctx context.Context, s *yspLiveSession) error
 		s.mu.Unlock()
 		if err == nil {
 			live.remember(s.channel, state)
+			live.event("refresh", "直播清单已刷新："+yspRouteLabel(state.mode), s.channel.ID)
+		} else if ctx.Err() == nil {
+			live.event("failure", state.errorText, s.channel.ID)
 		}
 	}
 	return err
@@ -547,10 +584,12 @@ func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel,
 			return err
 		}
 		s.playlist, s.refreshed = playlist, time.Now()
+		s.info = yspStreamInfo{Route: "jce"}
+		yspRegisterMedia(s, playlist, map[string]string{"User-Agent": yspJCEUA})
 		return nil
 	}
 	s.attempted = time.Now()
-	if live.device != nil && yspDeviceLiveIDs[channel.ID] != "" {
+	if live.device != nil && yspDeviceLiveIDs[channel.ID] != "" && live.deviceEnabled(channel) {
 		deviceContext, cancel := context.WithTimeout(ctx, 8*time.Second)
 		err := live.refreshDevice(deviceContext, channel, s)
 		cancel()
@@ -589,14 +628,19 @@ func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel,
 		address, err := live.timeshift(primaryContext, channel)
 		if err == nil {
 			var text string
-			text, err = live.playlistWithHeaders(primaryContext, address, 0, live.client, map[string]string{"User-Agent": yspJCEUA})
+			info := yspStreamInfo{Route: "jce"}
+			text, err = live.playlistWithHeaders(context.WithValue(primaryContext, yspManifestInfoKey{}, &info), address, 0, live.client, map[string]string{"User-Agent": yspJCEUA})
 			if err == nil {
 				err = yspMergePlaylist(s, text, s.mode != "jce")
+				if err == nil {
+					s.info = info
+				}
 			}
 		}
 		cancel()
 		if err == nil {
 			s.mode = "jce"
+			yspRegisterMedia(s, s.playlist, map[string]string{"User-Agent": yspJCEUA})
 			yspPruneLiveResources(s)
 			s.refreshed = time.Now()
 			s.errorText = ""
@@ -626,11 +670,14 @@ func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel,
 			s.urlTime = time.Now()
 		}
 		for _, address := range s.urls {
-			text, err := live.playlist(backupContext, address, 0)
+			info := yspStreamInfo{Route: "bk"}
+			text, err := live.playlist(context.WithValue(backupContext, yspManifestInfoKey{}, &info), address, 0)
 			if err == nil && len(yspParseSegments(text)) > 0 && !strings.Contains(text, "#EXT-X-ENDLIST") {
 				err = yspMergePlaylist(s, text, s.mode != "bk")
 				if err == nil {
 					s.mode = "bk"
+					s.info = info
+					yspRegisterMedia(s, s.playlist, map[string]string{"User-Agent": yspUA, "Referer": "https://live.cctv.cn/"})
 					yspPruneLiveResources(s)
 					s.refreshed = time.Now()
 					s.errorText = ""
@@ -708,7 +755,8 @@ func (live *yspLiveServer) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	playlist, refreshed, catchup := s.playlist, s.refreshed, s.catchup != nil
-	playlist = yspProxyLivePlaylist(playlist, "/live/"+parts[1]+"/media/", s.media)
+	prefix, _ := r.Context().Value(yspGatewayPrefixKey{}).(string)
+	playlist = yspProxyLivePlaylist(playlist, prefix+"/live/"+parts[1]+"/media/", s.media)
 	s.mu.Unlock()
 	if s.ctx.Err() != nil {
 		http.Error(w, "直播已结束", http.StatusGone)

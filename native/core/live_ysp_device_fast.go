@@ -53,6 +53,7 @@ func (device *yspDeviceResolver) bootstrapFast(ctx context.Context) (*yspDeviceS
 		return nil, err
 	}
 	session.created, session.lastBeat = time.Now(), time.Now()
+	session.heartbeatCount = 1
 	device.mu.Lock()
 	life := device.life
 	device.mu.Unlock()

@@ -32,10 +32,13 @@ type yspDevicePool struct {
 	life         context.Context
 	refilling    bool
 	lastRefill   time.Time
+	mode         string
+	linkLimit    int
+	logEvent     func(string, string, string)
 }
 
 func newYSPDevicePool(client *http.Client, directory string) *yspDevicePool {
-	pool := &yspDevicePool{control: make(chan struct{}, 1), assignments: map[string]int{}}
+	pool := &yspDevicePool{control: make(chan struct{}, 1), assignments: map[string]int{}, mode: "all", linkLimit: yspDeviceLinkLimit}
 	for index := range pool.slots {
 		device := newYSPDeviceResolver(client, directory)
 		device.fast, device.warm = true, index == 0
@@ -52,7 +55,7 @@ func newYSPDevicePool(client *http.Client, directory string) *yspDevicePool {
 func (pool *yspDevicePool) start() {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	if pool.cancel != nil {
+	if pool.cancel != nil || pool.mode == "off" {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -80,6 +83,12 @@ func (pool *yspDevicePool) run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		for index, device := range pool.slots {
+			pool.mu.Lock()
+			mode := pool.mode
+			pool.mu.Unlock()
+			if mode == "off" || mode == "4k" && index > 0 {
+				continue
+			}
 			work, cancel := context.WithTimeout(ctx, 45*time.Second)
 			device.mu.Lock()
 			session := device.session
@@ -186,7 +195,7 @@ func (pool *yspDevicePool) takeStandby() *yspDeviceSession {
 	standby.mu.Lock()
 	defer standby.mu.Unlock()
 	session := standby.session
-	if session == nil || time.Since(session.created) >= yspDeviceSessionTTL-5*time.Minute {
+	if !yspSessionFresh(session, time.Now()) || time.Since(session.created) >= yspDeviceSessionTTL-5*time.Minute {
 		return nil
 	}
 	standby.session, standby.loaded = nil, false
@@ -238,6 +247,9 @@ func (pool *yspDevicePool) rotate(ctx context.Context, slot int) error {
 	}
 	pool.mu.Unlock()
 	pool.replenish()
+	if pool.logEvent != nil {
+		pool.logEvent("rotation", "设备槽位 "+strconv.Itoa(slot)+" 已轮换", "")
+	}
 	return nil
 }
 
@@ -250,17 +262,36 @@ func (pool *yspDevicePool) resolve(ctx context.Context, channel yspChannel) (ysp
 	}
 	slot := pool.slotFor(channel.ID)
 	device := pool.slots[slot]
+	pool.mu.Lock()
+	limit := pool.linkLimit
+	mode := pool.mode
+	pool.mu.Unlock()
+	if mode == "off" || mode == "4k" && !yspWarmChannel(channel.ID) {
+		return yspDeviceEntry{}, errors.New("此频道已设置为标准直播模式")
+	}
 	device.mu.Lock()
-	session := device.session
+	if entry, exists := device.entries[channel.ID]; exists && time.Now().Before(entry.expires) && entry.headers["UID"] != "" && entry.headers["APPSIGN"] != "" {
+		entry.lastUsed = time.Now()
+		device.entries[channel.ID] = entry
+		device.lastViewed[channel.ID] = time.Now()
+		device.mu.Unlock()
+		return entry, nil
+	}
 	waiting := time.Now().Before(device.failures[channel.ID].retryAt)
-	full := slot > 0 && session != nil && !session.linked[channel.ID] && len(session.linked) >= yspDeviceLinkLimit
 	device.mu.Unlock()
 	if waiting {
 		return yspDeviceEntry{}, errors.New("央视频设备频道正在等待重试")
 	}
+	if err := pool.ensureSession(ctx, slot); err != nil {
+		return yspDeviceEntry{}, err
+	}
+	device.mu.Lock()
+	session := device.session
+	full := limit > 0 && slot > 0 && session != nil && !session.linked[channel.ID] && len(session.linked) >= limit
+	device.mu.Unlock()
 	if full {
 		other := 3 - slot
-		if yspDeviceLinkedCount(pool.slots[other]) < yspDeviceLinkLimit {
+		if err := pool.ensureSession(ctx, other); err == nil && yspDeviceLinkedCount(pool.slots[other]) < limit {
 			slot, device = other, pool.slots[other]
 		} else if err := pool.rotate(ctx, slot); err != nil {
 			if !errors.Is(err, context.Canceled) {
@@ -282,6 +313,59 @@ func (pool *yspDevicePool) resolve(ctx context.Context, channel yspChannel) (ysp
 		}
 	}
 	return entry, err
+}
+
+func (pool *yspDevicePool) configure(mode string, limit int) {
+	pool.mu.Lock()
+	pool.mode, pool.linkLimit = mode, limit
+	pool.mu.Unlock()
+}
+
+func (pool *yspDevicePool) ensureSession(ctx context.Context, slot int) error {
+	device := pool.slots[slot]
+	device.mu.Lock()
+	ready := yspSessionFresh(device.session, time.Now()) && time.Until(device.session.created.Add(yspDeviceSessionTTL)) > 5*time.Minute
+	retry := device.sessionRetry
+	device.mu.Unlock()
+	if ready {
+		return nil
+	}
+	if slot == 0 {
+		pool.standby.mu.Lock()
+		standbyReady := yspSessionFresh(pool.standby.session, time.Now())
+		pool.standby.mu.Unlock()
+		if standbyReady {
+			return pool.rotate(ctx, slot)
+		}
+	}
+	if time.Now().Before(retry) {
+		return errors.New("央视频设备注册正在等待重试")
+	}
+	if err := device.lockControl(ctx); err != nil {
+		return err
+	}
+	defer func() { <-device.control }()
+	device.mu.Lock()
+	ready = yspSessionFresh(device.session, time.Now()) && time.Until(device.session.created.Add(yspDeviceSessionTTL)) > 5*time.Minute
+	device.mu.Unlock()
+	if ready {
+		return nil
+	}
+	session, err := device.bootstrapFast(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			device.mu.Lock()
+			device.bootFailures++
+			device.sessionRetry = time.Now().Add(15 * time.Second)
+			device.mu.Unlock()
+		}
+		return err
+	}
+	device.mu.Lock()
+	device.session, device.sessionRetry, device.bootFailures = session, time.Time{}, 0
+	device.mu.Unlock()
+	pool.replenish()
+	return nil
 }
 
 func (pool *yspDevicePool) retryPlaylist(ctx context.Context, channel yspChannel, rejected yspDeviceEntry, rotate bool) (yspDeviceEntry, error) {

@@ -4,6 +4,7 @@ import 'app_layout.dart';
 import 'core_bridge.dart';
 import 'live_models.dart';
 import 'live_player_screen.dart';
+import 'live_settings_screen.dart';
 import 'local_store.dart';
 import 'remote_widgets.dart';
 
@@ -85,7 +86,18 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
         )
         .toList();
     return Scaffold(
-      appBar: widget.embedded ? null : AppBar(title: const Text('电视直播 · 央视频')),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('电视直播 · 央视频'),
+              actions: [
+                IconButton(
+                  tooltip: '直播设置与诊断',
+                  onPressed: allowed ? _openSettings : null,
+                  icon: const Icon(Icons.tune),
+                ),
+              ],
+            ),
       body: SafeArea(
         top: !widget.embedded,
         child: !allowed
@@ -109,12 +121,25 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: TextField(
-                      onChanged: (query) => setState(() => _query = query),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: '搜索频道',
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            onChanged: (query) =>
+                                setState(() => _query = query),
+                            decoration: const InputDecoration(
+                              prefixIcon: Icon(Icons.search),
+                              hintText: '搜索频道',
+                            ),
+                          ),
+                        ),
+                        if (widget.embedded)
+                          IconButton(
+                            tooltip: '直播设置与诊断',
+                            onPressed: allowed ? _openSettings : null,
+                            icon: const Icon(Icons.tune),
+                          ),
+                      ],
                     ),
                   ),
                   SizedBox(
@@ -188,6 +213,18 @@ class _LiveChannelsScreenState extends State<LiveChannelsScreen> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => LiveSettingsScreen(
+          repository: widget.repository,
+          store: widget.store,
+        ),
       ),
     );
   }

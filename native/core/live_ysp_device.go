@@ -45,13 +45,15 @@ func yspDeviceInvalidates(err error) bool {
 }
 
 type yspDeviceSession struct {
-	client   *http.Client
-	headers  map[string]string
-	key      string
-	device   yspDeviceState
-	created  time.Time
-	lastBeat time.Time
-	linked   map[string]bool
+	client         *http.Client
+	headers        map[string]string
+	key            string
+	device         yspDeviceState
+	created        time.Time
+	lastBeat       time.Time
+	linked         map[string]bool
+	heartbeatCount int
+	heartbeatError string
 }
 
 type yspDeviceEntry struct {
@@ -60,6 +62,7 @@ type yspDeviceEntry struct {
 	expires  time.Time
 	lastUsed time.Time
 	owner    *yspDeviceResolver
+	info     yspStreamInfo
 }
 
 type yspDeviceFailure struct {
@@ -192,6 +195,12 @@ func (device *yspDeviceResolver) pulse(ctx context.Context) {
 		err := device.heartbeat(ctx, session)
 		device.mu.Lock()
 		if device.session == session {
+			session.heartbeatCount++
+			if err != nil {
+				session.heartbeatError = err.Error()
+			} else {
+				session.heartbeatError = ""
+			}
 			if yspDeviceInvalidates(err) {
 				device.session = nil
 				device.sessionRetry = time.Now().Add(30 * time.Second)
@@ -792,7 +801,24 @@ func (device *yspDeviceResolver) resolveChannel(ctx context.Context, session *ys
 	if device.fast {
 		ttl = time.Minute
 	}
-	return yspDeviceEntry{address: address, headers: playbackHeaders, expires: time.Now().Add(ttl), owner: device}, nil
+	rate, _ := video["rate"].(string)
+	rateName, _ := video["rateName"].(string)
+	if rateName == "" {
+		rateName, _ = video["name"].(string)
+	}
+	for channel, identity := range yspDeviceLiveIDs {
+		if identity != liveID {
+			continue
+		}
+		if (channel == "cctv4k" || channel == "cctv164k") && rateName == "8K高清" {
+			rateName = "4K超高清"
+		} else if !yspWarmChannel(channel) && (rateName == "8K高清" || rateName == "4K高清") {
+			rateName = "高码率"
+		}
+		break
+	}
+	info := yspStreamInfo{Route: "device", Rate: rate, RateName: rateName, Width: int(yspStreamNumber(video["width"])), Height: int(yspStreamNumber(video["height"])), Bandwidth: yspStreamNumber(video["bandwidth"])}
+	return yspDeviceEntry{address: address, headers: playbackHeaders, expires: time.Now().Add(ttl), owner: device, info: info}, nil
 }
 
 func (device *yspDeviceResolver) appStartKey(ctx context.Context, client *http.Client, state yspDeviceState) (string, map[string]string, error) {

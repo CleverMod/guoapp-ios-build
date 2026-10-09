@@ -101,6 +101,8 @@ type nativeInput struct {
 	ExpectedVersions map[string]string       `json:"expectedVersions"`
 	SystemProxy      nativeSystemProxy       `json:"systemProxy"`
 	Settings         nativeResourceSettings  `json:"settings"`
+	LiveSettings     nativeLiveSettings      `json:"liveSettings"`
+	LiveInfo         yspStreamInfo           `json:"liveInfo"`
 	JobIDs           []string                `json:"jobIds"`
 	PlaybackSession  string                  `json:"playbackSession"`
 	StartMS          int64                   `json:"startMs"`
@@ -148,6 +150,7 @@ type nativePlan struct {
 	Session         string            `json:"session,omitempty"`
 	RouteIndex      int               `json:"routeIndex"`
 	RouteCount      int               `json:"routeCount"`
+	LiveInfo        *yspStreamInfo    `json:"liveInfo,omitempty"`
 }
 
 type nativeEngine struct {
@@ -387,6 +390,38 @@ func nativeDispatch(input nativeInput) (any, error) {
 	switch input.Action {
 	case "liveChannels":
 		return map[string]any{"items": yspLiveChannels()}, nil
+	case "liveSettings", "liveDiagnostics", "clearLiveCache", "liveGateway", "liveInfo", "reportLiveFormat":
+		live, err := engine.liveServer()
+		if err != nil {
+			return nil, err
+		}
+		switch input.Action {
+		case "liveSettings":
+			live.mu.Lock()
+			settings := live.settings
+			live.mu.Unlock()
+			return settings, nil
+		case "clearLiveCache":
+			live.segmentCache.clear()
+			live.event("cache", "直播分片缓存已清理", "")
+			return live.diagnostics(), nil
+		case "liveGateway":
+			if input.Command == "start" {
+				if err := live.startGateway(); err != nil {
+					return nil, err
+				}
+			} else if input.Command == "stop" {
+				live.stopGateway()
+			} else {
+				return nil, errors.New("未知直播订阅操作")
+			}
+			return live.diagnostics(), nil
+		case "liveInfo", "reportLiveFormat":
+			return live.playbackInfo(input.Session, input.LiveInfo, input.Action == "reportLiveFormat")
+		}
+		return live.diagnostics(), nil
+	case "saveLiveSettings":
+		return engine.saveLiveSettings(input.LiveSettings)
 	case "openLive":
 		live, err := engine.liveServer()
 		if err != nil {

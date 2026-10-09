@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const yspEPGURL = "https://live.fanmingming.com/e.xml"
+const yspEPGURL = "https://epg.zsdc.eu.org/t.xml.gz"
 
 type yspCatchupRange struct {
 	start int64
@@ -135,8 +135,21 @@ func (live *yspLiveServer) serveCatchup(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	if r.Method == http.MethodGet {
+		session.mu.Lock()
+		yspRegisterMedia(&session.yspLiveState, playlist, map[string]string{"User-Agent": yspJCEUA})
+		prefix, _ := r.Context().Value(yspGatewayPrefixKey{}).(string)
+		playlist = yspProxyLivePlaylist(playlist, prefix+"/live/"+sessionTokenFromPath(r.URL.Path)+"/media/", session.media)
+		session.mu.Unlock()
 		fmt.Fprint(w, playlist)
 	}
+}
+
+func sessionTokenFromPath(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) > 1 && parts[0] == "live" {
+		return parts[1]
+	}
+	return ""
 }
 
 var yspEPGIDs = map[string]string{

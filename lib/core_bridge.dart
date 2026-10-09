@@ -77,6 +77,19 @@ abstract class AppRepository {
     bool automatic = false,
   }) async => throw AppFailure('当前环境不支持直播');
   Future<void> releaseLive(String session) async {}
+  Future<LiveSettings> liveSettings() async => const LiveSettings();
+  Future<LiveSettings> saveLiveSettings(LiveSettings settings) async =>
+      throw AppFailure('当前环境不支持直播设置');
+  Future<Map<String, dynamic>> liveDiagnostics() async => const {};
+  Future<Map<String, dynamic>> clearLiveCache() async => const {};
+  Future<Map<String, dynamic>> liveGateway(String command) async => const {};
+  Future<LiveStreamInfo> liveInfo(String session) async =>
+      const LiveStreamInfo();
+  Future<LiveStreamInfo> reportLiveFormat(
+    String session,
+    int width,
+    int height,
+  ) async => const LiveStreamInfo();
   Future<Map<String, dynamic>> lan(
     String command,
     Map<String, dynamic> payload,
@@ -239,6 +252,81 @@ class NativeRepository extends AppRepository {
   Future<void> releaseLive(String session) async {
     await _call({'action': 'releaseLive', 'session': session});
   }
+
+  @override
+  Future<LiveSettings> liveSettings() async =>
+      LiveSettings.fromJson(await _call({'action': 'liveSettings'}));
+  @override
+  Future<LiveSettings> saveLiveSettings(LiveSettings settings) async {
+    if (access != null && !access!.profile.admin) {
+      throw AppFailure('仅管理员可更改直播运行设置');
+    }
+    return LiveSettings.fromJson(
+      await _call({
+        'action': 'saveLiveSettings',
+        'liveSettings': settings.toJson(),
+      }),
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> liveDiagnostics() =>
+      _call({'action': 'liveDiagnostics'});
+  @override
+  Future<Map<String, dynamic>> clearLiveCache() =>
+      _call({'action': 'clearLiveCache'});
+  LocalStore? _liveGatewayOwner;
+  int? _liveGatewayEpoch;
+  void _liveGatewayAccessChanged() {
+    final owner = _liveGatewayOwner;
+    if (owner == null) return;
+    if (owner.locked ||
+        !owner.profile.admin ||
+        owner.profileEpoch != _liveGatewayEpoch) {
+      owner.removeListener(_liveGatewayAccessChanged);
+      _liveGatewayOwner = null;
+      unawaited(
+        _call({
+          'action': 'liveGateway',
+          'command': 'stop',
+        }).catchError((Object _) => <String, dynamic>{}),
+      );
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> liveGateway(String command) async {
+    if (command == 'start' && access != null && !access!.profile.admin) {
+      throw AppFailure('仅管理员可开启直播订阅服务');
+    }
+    final result = await _call({'action': 'liveGateway', 'command': command});
+    _liveGatewayOwner?.removeListener(_liveGatewayAccessChanged);
+    _liveGatewayOwner = null;
+    if (command == 'start' && access != null) {
+      _liveGatewayOwner = access;
+      _liveGatewayEpoch = access!.profileEpoch;
+      access!.addListener(_liveGatewayAccessChanged);
+    }
+    return result;
+  }
+
+  @override
+  Future<LiveStreamInfo> liveInfo(String session) async =>
+      LiveStreamInfo.fromJson(
+        await _call({'action': 'liveInfo', 'session': session}),
+      );
+  @override
+  Future<LiveStreamInfo> reportLiveFormat(
+    String session,
+    int width,
+    int height,
+  ) async => LiveStreamInfo.fromJson(
+    await _call({
+      'action': 'reportLiveFormat',
+      'session': session,
+      'liveInfo': {'width': width, 'height': height},
+    }),
+  );
 
   static final _coverDecoder = CoverDecoder();
   NativeRepository({this.background = false});
@@ -564,6 +652,7 @@ class NativeRepository extends AppRepository {
             'updateSystemProxy',
           }.contains(action) ||
           action == 'workLease' && input['command'] == 'end' ||
+          action == 'liveGateway' && input['command'] == 'stop' ||
           action == 'lan' &&
               {
                 'stop',
@@ -644,6 +733,9 @@ class NativeRepository extends AppRepository {
       }
       final data = response['data'];
       if (!unrestricted && epoch != access?.profileEpoch) {
+        if (action == 'liveGateway' && input['command'] == 'start') {
+          await _call({'action': 'liveGateway', 'command': 'stop'});
+        }
         if (data is Map && data['session'] is String) {
           if (action == 'openLive') {
             await releaseLive(data['session'] as String);

@@ -12,6 +12,7 @@ import 'app_theme.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'live_models.dart';
+import 'live_settings_screen.dart';
 import 'local_store.dart';
 import 'luna_exo_player.dart';
 import 'remote_widgets.dart';
@@ -52,6 +53,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
   String? _playingChannel;
   Future<void> _operations = Future<void>.value();
   Timer? _healthTimer;
+  Timer? _infoTimer;
+  bool _infoBusy = false;
+  LiveStreamInfo _streamInfo = const LiveStreamInfo();
+  String? _formatSession;
+  int _formatWidth = 0, _formatHeight = 0;
   Timer? _retryTimer;
   Timer? _errorTimer;
   Timer? _controlsTimer;
@@ -110,6 +116,17 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
       );
     }
     WidgetsBinding.instance.addObserver(this);
+    _subscriptions.add(
+      _player.stream.videoParams.listen((_) => _updateLiveFormat()),
+    );
+    _subscriptions.add(_player.stream.width.listen((_) => _updateLiveFormat()));
+    _subscriptions.add(
+      _player.stream.height.listen((_) => _updateLiveFormat()),
+    );
+    _infoTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _refreshLiveInfo(),
+    );
     widget.store.addListener(_accessChanged);
     _subscriptions.add(
       _player.stream.error.listen((error) {
@@ -315,6 +332,9 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
         await _player.stop();
         _playingChannel = null;
         _playback = playback;
+        _streamInfo = playback.info;
+        _formatSession = null;
+        _formatWidth = _formatHeight = 0;
         if (previous != null) await _release(previous);
         final platform = _player.platform;
         if (platform is NativePlayer) {
@@ -349,6 +369,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
           return;
         }
         _playingChannel = channel.id;
+        _updateLiveFormat();
         _lastPosition = _player.state.position;
         _lastProgress = DateTime.now();
         _acceptErrors = true;
@@ -382,6 +403,92 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
     _errorTimer = Timer(const Duration(seconds: 8), () {
       if (!_closed && ticket == _generation) _recover(message);
     });
+  }
+
+  Future<void> _refreshLiveInfo() async {
+    final playback = _playback;
+    if (_closed ||
+        !_allowed ||
+        !_foreground ||
+        _loading ||
+        _infoBusy ||
+        playback == null) {
+      return;
+    }
+    _infoBusy = true;
+    try {
+      final info = await widget.repository.liveInfo(playback.session);
+      if (mounted && !_closed && _allowed && identical(playback, _playback)) {
+        setState(() => _streamInfo = info);
+      }
+    } catch (_) {
+    } finally {
+      _infoBusy = false;
+    }
+  }
+
+  void _updateLiveFormat() {
+    final playback = _playback;
+    if (_closed ||
+        !_allowed ||
+        _playingChannel != _channel.id ||
+        playback == null) {
+      return;
+    }
+    final width = _player.state.videoParams.w ?? _player.state.width ?? 0;
+    final height = _player.state.videoParams.h ?? _player.state.height ?? 0;
+    if (width <= 0 ||
+        height <= 0 ||
+        _formatSession == playback.session &&
+            _formatWidth == width &&
+            _formatHeight == height) {
+      return;
+    }
+    _formatSession = playback.session;
+    _formatWidth = width;
+    _formatHeight = height;
+    if (mounted) setState(() {});
+    unawaited(
+      widget.repository
+          .reportLiveFormat(playback.session, width, height)
+          .then((info) {
+            if (mounted &&
+                !_closed &&
+                _allowed &&
+                identical(playback, _playback)) {
+              setState(() => _streamInfo = info);
+            }
+          })
+          .catchError((Object _) {}),
+    );
+  }
+
+  String get _streamDescription {
+    final width = _formatWidth > 0 ? _formatWidth : _streamInfo.width;
+    final height = _formatHeight > 0 ? _formatHeight : _streamInfo.height;
+    final size = width > 0 && height > 0
+        ? ' · $width×$height${_formatWidth > 0 || _streamInfo.decoder ? '' : '（源标注）'}'
+        : '';
+    final rate = _streamInfo.rateLabel.isEmpty
+        ? ''
+        : ' · ${_streamInfo.rateLabel}（源标注）';
+    final bandwidth = _streamInfo.bandwidth > 0
+        ? ' · 源标注 ${(_streamInfo.bandwidth / 1000000).toStringAsFixed(1)} Mbps'
+        : '';
+    return '${_streamInfo.routeLabel}$size$rate$bandwidth';
+  }
+
+  void _openLiveSettings() {
+    _showControls();
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => LiveSettingsScreen(
+          repository: widget.repository,
+          store: widget.store,
+        ),
+      ),
+    );
   }
 
   void _recover(String message) {
@@ -703,6 +810,7 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
 
   @override
   void dispose() {
+    _infoTimer?.cancel();
     _closed = true;
     _generation++;
     _retryTimer?.cancel();
@@ -868,6 +976,14 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                 icon: const Icon(Icons.refresh),
               ),
             ),
+            if (_fullscreen || AppLayout.isTelevision(context))
+              button(
+                IconButton(
+                  tooltip: '直播设置与诊断',
+                  onPressed: _allowed ? _openLiveSettings : null,
+                  icon: const Icon(Icons.tune),
+                ),
+              ),
             button(
               PopupMenuButton<double>(
                 tooltip: '音量',
@@ -1067,6 +1183,11 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                     title: Text(_channel.name),
                     actions: [
                       IconButton(
+                        tooltip: '直播设置与诊断',
+                        onPressed: _allowed ? _openLiveSettings : null,
+                        icon: const Icon(Icons.tune),
+                      ),
+                      IconButton(
                         tooltip: '播放日记',
                         onPressed: () => DiaryService.showDiaryDialog(context),
                         icon: const Icon(Icons.receipt_long),
@@ -1094,7 +1215,10 @@ class _LivePlayerScreenState extends State<LivePlayerScreen>
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             children: [
-                              Text('${_channel.group} · 直播画质以实际输出为准'),
+                              Text(
+                                '${_channel.group} · $_streamDescription',
+                                textAlign: TextAlign.center,
+                              ),
                               Row(
                                 children: [
                                   const Icon(Icons.volume_up),

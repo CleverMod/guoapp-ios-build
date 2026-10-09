@@ -9,12 +9,14 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
+	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -66,14 +68,76 @@ func yspNewDeviceState() (yspDeviceState, error) {
 	}
 	mac := noise[8:]
 	mac[0] = (mac[0] | 2) & 254
-	profile := yspDeviceProfile{
-		AndroidID: hex.EncodeToString(noise[:8]), MAC: fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
-		Hardware: "mt5895", Board: "mt5895", Brand: "Sony", Manufacturer: "Sony", Model: "XR-85Z9K", ReportModel: "XR85Z9K",
-		Device: "sony_xr_85z9k", Product: "sony_xr_85z9k", Tags: "release-keys", BuildType: "user", User: "build", Resolution: "7680*4320",
-		VersionID: "SONYTV.2022.XR_85Z9K", Display: "XR-85Z9K-user 13 SONYTV.2022.XR_85Z9K 2024 release-keys", Host: "sony-tv-build",
-		Fingerprint: "Sony/sony_xr_85z9k/sony_xr_85z9k:13/SONYTV.2022.XR_85Z9K/2024:user/release-keys",
+	template, err := yspChooseDeviceTemplate()
+	if err != nil {
+		return yspDeviceState{}, err
 	}
-	return yspDeviceState{SchemaVersion: 1, ProfileSource: "sony_8k_pool.XR-85Z9K", Profile: profile, ScreenParam: "7680-4320-280", CastModel: profile.Model, UID: yspDeviceUID(profile)}, nil
+	brand, model := yspProfileID(template.Brand), yspProfileID(template.Model)
+	device := brand + "_" + model
+	parts := strings.Split(template.ScreenParam, "-")
+	resolution := parts[0] + "*" + parts[1]
+	profile := yspDeviceProfile{AndroidID: hex.EncodeToString(noise[:8]), MAC: fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
+		Hardware: template.Hardware, Board: template.Board, Brand: template.Brand, Manufacturer: template.Manufacturer, Model: template.Model, ReportModel: template.ReportModel,
+		Device: device, Product: device, Tags: "release-keys", BuildType: "user", User: "build", Resolution: resolution,
+		VersionID: template.VersionID, Display: template.Model + "-user 13 " + template.VersionID + " 2024 release-keys", Host: brand + "-tv-build",
+		Fingerprint: template.Manufacturer + "/" + device + "/" + device + ":13/" + template.VersionID + "/2024:user/release-keys"}
+	return yspDeviceState{SchemaVersion: 1, ProfileSource: template.Source, Profile: profile, ScreenParam: template.ScreenParam, CastModel: template.CastModel, UID: yspDeviceUID(profile)}, nil
+}
+
+//go:embed ysp_device_profiles.json
+var yspDeviceProfileData []byte
+
+type yspDeviceTemplate struct {
+	Source       string `json:"source"`
+	Brand        string `json:"brand"`
+	Manufacturer string `json:"manufacturer"`
+	Model        string `json:"model"`
+	ReportModel  string `json:"report_model"`
+	Hardware     string `json:"hardware"`
+	Board        string `json:"board"`
+	VersionID    string `json:"version_id"`
+	ScreenParam  string `json:"screen_param"`
+	CastModel    string `json:"cast_model"`
+}
+
+func yspChooseDeviceTemplate() (yspDeviceTemplate, error) {
+	var templates []yspDeviceTemplate
+	if json.Unmarshal(yspDeviceProfileData, &templates) != nil || len(templates) == 0 {
+		return yspDeviceTemplate{}, errors.New("央视频设备模板无效")
+	}
+	preferred := make([]yspDeviceTemplate, 0, len(templates))
+	for _, template := range templates {
+		if strings.Contains(template.Source, "8k") {
+			preferred = append(preferred, template)
+		}
+	}
+	if len(preferred) > 0 {
+		templates = preferred
+	}
+	choice, err := rand.Int(rand.Reader, big.NewInt(int64(len(templates))))
+	if err != nil {
+		return yspDeviceTemplate{}, err
+	}
+	template := templates[choice.Int64()]
+	if len(strings.Split(template.ScreenParam, "-")) < 2 {
+		return template, errors.New("央视频设备分辨率模板无效")
+	}
+	return template, nil
+}
+
+func yspProfileID(value string) string {
+	var result strings.Builder
+	underscore := false
+	for _, character := range strings.ToLower(value) {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' {
+			result.WriteRune(character)
+			underscore = false
+		} else if !underscore {
+			result.WriteByte('_')
+			underscore = true
+		}
+	}
+	return strings.Trim(result.String(), "_")
 }
 
 func yspLoadDeviceState(path string) (yspDeviceState, error) {

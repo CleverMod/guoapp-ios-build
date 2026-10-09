@@ -37,8 +37,12 @@ func nativeDownloadAvailable(job nativeDownloadJob) bool {
 
 func nativeAuthorizeInput(input nativeInput) error {
 	switch input.Action {
-	case "liveChannels", "openLive":
+	case "liveChannels", "openLive", "liveSettings", "saveLiveSettings", "liveDiagnostics", "clearLiveCache", "liveInfo", "reportLiveFormat":
 		if buildAllSources != "true" {
+			return errNativeBuildSource
+		}
+	case "liveGateway":
+		if buildAllSources != "true" && input.Command != "stop" {
 			return errNativeBuildSource
 		}
 	case "recommendations", "cachedRecommendations", "suggestions", "danmaku":
