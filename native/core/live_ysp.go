@@ -607,7 +607,7 @@ func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel,
 			}
 		}
 	}
-	if s.mode == "web" && live.web != nil {
+	if s.mode == "web" && live.web != nil && live.webEnabled() {
 		webContext, cancel := context.WithTimeout(ctx, 12*time.Second)
 		err := live.refreshWeb(webContext, channel, s)
 		cancel()
@@ -701,7 +701,7 @@ func (live *yspLiveServer) refreshState(ctx context.Context, channel yspChannel,
 		cancel()
 	}
 	s.urls = nil
-	if live.web != nil && s.mode != "web" && ctx.Err() == nil {
+	if live.web != nil && s.mode != "web" && live.webEnabled() && ctx.Err() == nil {
 		webContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err := live.refreshWeb(webContext, channel, s)
 		cancel()

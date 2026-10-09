@@ -51,6 +51,7 @@ class LivePlayback {
 class LiveSettings {
   const LiveSettings({
     this.deviceMode = 'all',
+    this.webEnabled = true,
     this.linksPerDevice = 6,
     this.cacheMB = 200,
     this.gatewayLAN = false,
@@ -58,6 +59,7 @@ class LiveSettings {
     this.warning = '',
   });
   final String deviceMode;
+  final bool webEnabled;
   final int linksPerDevice;
   final int cacheMB;
   final bool gatewayLAN;
@@ -66,6 +68,7 @@ class LiveSettings {
 
   factory LiveSettings.fromJson(Map<String, dynamic> json) => LiveSettings(
     deviceMode: json['deviceMode'] as String? ?? 'all',
+    webEnabled: json['webEnabled'] != false,
     linksPerDevice: (json['linksPerDevice'] as num?)?.toInt() ?? 6,
     cacheMB: (json['cacheMB'] as num?)?.toInt() ?? 200,
     gatewayLAN: json['gatewayLAN'] == true,
@@ -74,6 +77,7 @@ class LiveSettings {
   );
   Map<String, dynamic> toJson() => {
     'deviceMode': deviceMode,
+    'webEnabled': webEnabled,
     'linksPerDevice': linksPerDevice,
     'cacheMB': cacheMB,
     'gatewayLAN': gatewayLAN,

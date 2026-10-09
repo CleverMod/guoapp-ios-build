@@ -9,6 +9,7 @@ import (
 
 type nativeLiveSettings struct {
 	DeviceMode     string `json:"deviceMode"`
+	WebEnabled     bool   `json:"webEnabled"`
 	LinksPerDevice int    `json:"linksPerDevice"`
 	CacheMB        int    `json:"cacheMB"`
 	GatewayLAN     bool   `json:"gatewayLAN"`
@@ -17,7 +18,7 @@ type nativeLiveSettings struct {
 }
 
 func defaultLiveSettings() nativeLiveSettings {
-	return nativeLiveSettings{DeviceMode: "all", LinksPerDevice: 6, CacheMB: 200, GatewayPort: 8767}
+	return nativeLiveSettings{DeviceMode: "all", WebEnabled: true, LinksPerDevice: 6, CacheMB: 200, GatewayPort: 8767}
 }
 
 func (settings nativeLiveSettings) validate() error {
@@ -73,7 +74,7 @@ func (engine *nativeEngine) saveLiveSettings(settings nativeLiveSettings) (nativ
 	previous := live.settings
 	live.settings = settings
 	active := live.server != nil
-	if previous.DeviceMode != settings.DeviceMode || previous.LinksPerDevice != settings.LinksPerDevice {
+	if previous.DeviceMode != settings.DeviceMode || previous.WebEnabled != settings.WebEnabled || previous.LinksPerDevice != settings.LinksPerDevice {
 		live.cache = map[string]yspLiveState{}
 	}
 	live.mu.Unlock()
@@ -89,6 +90,13 @@ func (engine *nativeEngine) saveLiveSettings(settings nativeLiveSettings) (nativ
 	}
 	live.event("settings", "直播运行设置已更新", "")
 	return settings, nil
+}
+
+func (live *yspLiveServer) webEnabled() bool {
+	live.mu.Lock()
+	enabled := live.settings.WebEnabled || live.settings.DeviceMode == ""
+	live.mu.Unlock()
+	return enabled
 }
 
 func (live *yspLiveServer) deviceEnabled(channel yspChannel) bool {

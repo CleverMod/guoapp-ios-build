@@ -26,6 +26,7 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
   LiveSettings? _settings;
   Map<String, dynamic> _diagnostics = const {};
   String _mode = 'all';
+  bool _webEnabled = true;
   int _links = 6, _cache = 200;
   bool _lan = false, _busy = false, _allChannels = false;
   String? _error;
@@ -60,6 +61,7 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
       setState(() {
         _settings = settings;
         _mode = settings.deviceMode;
+        _webEnabled = settings.webEnabled;
         _links = settings.linksPerDevice;
         _cache = settings.cacheMB;
         _lan = settings.gatewayLAN;
@@ -99,6 +101,7 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
       final saved = await widget.repository.saveLiveSettings(
         LiveSettings(
           deviceMode: _mode,
+          webEnabled: _webEnabled,
           linksPerDevice: _links,
           cacheMB: _cache,
           gatewayLAN: _lan,
@@ -230,6 +233,15 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _webEnabled,
+                        title: const Text('允许网页备用线路'),
+                        subtitle: const Text('其他线路暂不可用时尝试网页直播。'),
+                        onChanged: _editable && !_busy
+                            ? (value) => setState(() => _webEnabled = value)
+                            : null,
+                      ),
                       DropdownButtonFormField<String>(
                         initialValue: _mode,
                         decoration: const InputDecoration(labelText: '取流模式'),
