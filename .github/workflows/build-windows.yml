@@ -1,4 +1,4 @@
-name: Build Windows packages
+name: Build app packages
 on:
   push:
     branches: [main, master]
@@ -51,6 +51,8 @@ jobs:
     needs: checks
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      GUOAPP_SOURCE_ACCESS: ${{ secrets.GUOAPP_SOURCE_ACCESS }}
     steps:
       - uses: actions/checkout@v4
 
